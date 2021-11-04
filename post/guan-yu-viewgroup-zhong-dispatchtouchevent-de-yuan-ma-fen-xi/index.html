@@ -1,22 +1,99 @@
-<?xml version="1.0" encoding="utf-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-    <id>https://arms-merchants.github.io/</id>
-    <title>Arms-merchants</title>
-    <updated>2021-11-04T03:54:55.529Z</updated>
-    <generator>https://github.com/jpmonette/feed</generator>
-    <link rel="alternate" href="https://arms-merchants.github.io/"/>
-    <link rel="self" href="https://arms-merchants.github.io/atom.xml"/>
-    <subtitle>温故而知新</subtitle>
-    <logo>https://arms-merchants.github.io/images/avatar.png</logo>
-    <icon>https://arms-merchants.github.io/favicon.ico</icon>
-    <rights>All rights reserved 2021, Arms-merchants</rights>
-    <entry>
-        <title type="html"><![CDATA[关于ViewGroup中dispatchTouchEvent的源码分析]]></title>
-        <id>https://arms-merchants.github.io/post/guan-yu-viewgroup-zhong-dispatchtouchevent-de-yuan-ma-fen-xi/</id>
-        <link href="https://arms-merchants.github.io/post/guan-yu-viewgroup-zhong-dispatchtouchevent-de-yuan-ma-fen-xi/">
-        </link>
-        <updated>2021-11-03T07:16:12.000Z</updated>
-        <content type="html"><![CDATA[<p><a href="https://juejin.cn/post/6917056099069722632">原文链接</a></p>
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>关于ViewGroup中dispatchTouchEvent的源码分析 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1635998088459">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="关于ViewGroup中dispatchTouchEvent的源码分析 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="原文链接
+事件分发流程图
+
+一些结论：
+1.如果一个view在ACTION_DOWN时没有消费事件，那么同一事件序列之后的ACTION_MOVE ACTION_UP都不会交由此view处理
+2.如果一个view在ACTION_DOWN时消费..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1635998088459" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              关于ViewGroup中dispatchTouchEvent的源码分析
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-11-03
+              </span>
+              <span>
+                27 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p><a href="https://juejin.cn/post/6917056099069722632">原文链接</a></p>
 <h3 id="事件分发流程图">事件分发流程图</h3>
 <figure data-type="image" tabindex="1"><img src="https://arms-merchants.github.io//post-images/1635927250830.webp" alt="" loading="lazy"></figure>
 <h3 id="一些结论">一些结论：</h3>
@@ -727,873 +804,102 @@ ViewGroup是通过mFirstTouchTarget来确定事件处理view的，如果没有�
             }
 </code></pre>
 <p>后续的事件不会是ACTION_DOWN，并且mFirstTouchTarget为null了，这里就会走else逻辑，调用不到onInterceptTouchEvent方法了。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Android换肤的实现以及相应的源码分析]]></title>
-        <id>https://arms-merchants.github.io/post/android-huan-fu-de-shi-xian-yi-ji-xiang-ying-de-yuan-ma-fen-xi/</id>
-        <link href="https://arms-merchants.github.io/post/android-huan-fu-de-shi-xian-yi-ji-xiang-ying-de-yuan-ma-fen-xi/">
-        </link>
-        <updated>2021-11-03T05:57:50.000Z</updated>
-        <content type="html"><![CDATA[<p>不处理关于AMS相关的信息，那么在这后面的流程：<br>
-ActivityThread-》performLaunchActivity（）方法-》方法内部构建了Context上下文，并且初始化了一个window对象，这个window对象在activity.attach之前只是一个Activity的window对象，并没有任何的值，只有在activity.attach之后这里会构建称PhoneWindow对象，并且这里初始化了UIThread.</p>
-<p>布局创建的流程：<br>
-PhoneWindow-》DecorView-》RootView-》LayoutInflater来进行布局的加载<br>
-，这是整个布局创建的过程<br>
-资源加载的流程：<br>
-App打包的apk中有一个resources.arsc的二进制文件，这个文件里存储了所有资源相关的ID，名称以及路径，所以如果要进行换肤实际就是将这个查找的路径替换为插件包里的路径，皮肤插件包其实也是一个apk，不过只包含资源而已，为了避免被处理，一般会修改后缀名称，例如.skin，但是这个不影响资源的加载</p>
-<p>在Android中资源类是Resource类，它的内部持有一个ResourcesImpl对象，而ResourcesImpl里内部持有一个AssetManager，这个是资源的实际管理类，虽然随着版本的提升AssetManager通过ApkAssets来进行资源的设置了，但是它依然有addAssetPath方法，所以我们可以通过构建一个AssetManager来实现一个Resources，这个Resources就是插件资源管理对象，其中资源插件包的id必须是与宿主的id一致</p>
-<pre><code class="language-java">   /**
-     * 1.通过原始app中的resId(R.color.XX)获取到自己的 名字
-     * 2.根据名字和类型获取皮肤包中的ID
-     */
-    public int getIdentifier(int resId) {
-        if (isDefaultSkin) {
-            return resId;
-        }
-        //在主app中通过资源id获取name和类型，然后通过这个类型获取在资源包里的resid
-        String entryName = mAppResources.getResourceEntryName(resId);
-        String entryTypeName = mAppResources.getResourceTypeName(resId);
-        int skinId = mSkinResources.getIdentifier(entryName, entryTypeName, mSkinPackageName);
-        return skinId;
-    }
-</code></pre>
-<p>基于上面id获取方法实现的资源获取</p>
-<pre><code class="language-java">/**
-     * 通过R.color.xx 来获取到皮肤包中的color
-     * 获取color
-     * @param resId
-     * @return
-     */
-    public int getColor(int resId) {
-        if (isDefaultSkin) {
-            return mAppResources.getColor(resId);
-        }
-        int skinId = getIdentifier(resId);
-        if (skinId == 0) {
-            return mAppResources.getColor(resId);
-        }
-        return mSkinResources.getColor(skinId);
-    }
 
-    public ColorStateList getColorStateList(int resId) {
-        if (isDefaultSkin) {
-            return mAppResources.getColorStateList(resId);
-        }
-        int skinId = getIdentifier(resId);
-        if (skinId == 0) {
-            return mAppResources.getColorStateList(resId);
-        }
-        return mSkinResources.getColorStateList(skinId);
-    }
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li>
+<ul>
+<li><a href="#%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91%E6%B5%81%E7%A8%8B%E5%9B%BE">事件分发流程图</a></li>
+<li><a href="#%E4%B8%80%E4%BA%9B%E7%BB%93%E8%AE%BA">一些结论：</a></li>
+<li><a href="#action_down%E7%9A%84%E8%B0%83%E7%94%A8%E6%97%B6%E5%BA%8F%E5%9B%BE">ACTION_DOWN的调用时序图</a></li>
+</ul>
+</li>
+<li><a href="#activityjava"><strong>Activity.java</strong></a>
+<ul>
+<li><a href="#%E9%92%88%E5%AF%B9%E5%85%B7%E4%BD%93%E7%9A%84%E4%BA%8B%E4%BB%B6%E5%88%86%E6%9E%90%E5%9C%A8%E4%B8%8A%E9%9D%A2%E5%B1%82%E7%BA%A7%E6%A8%A1%E5%9E%8B%E7%9A%84%E6%83%85%E5%86%B5%E4%B8%8B%E5%A4%84%E7%90%86%E4%BA%8B%E4%BB%B6%E5%88%86%E6%9E%90%E8%BF%99%E9%87%8C%E4%BB%A5action_down%E5%BC%80%E5%A7%8B">针对具体的事件分析，在上面层级模型的情况下处理事件分析，这里以ACTION_DOWN开始：</a></li>
+<li><a href="#action_move%E5%85%B6%E4%BB%96%E7%9A%84%E4%BA%8B%E4%BB%B6%E5%B0%B1%E7%B1%BB%E4%BC%BC%E4%BA%86">ACTION_MOVE，其他的事件就类似了</a></li>
+<li><a href="#dispatchtransformedtouchevent">dispatchTransformedTouchEvent</a></li>
+</ul>
+</li>
+<li><a href="#touchtarget%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90">TouchTarget源码分析</a>
+<ul>
+<li><a href="#%E9%99%84%E5%8A%A0%E9%97%AE%E9%A2%98%E5%BD%93viewgroup%E5%9C%A8action_move%E6%97%B6%E6%BB%A1%E8%B6%B3%E4%B8%80%E5%AE%9A%E6%9D%A1%E4%BB%B6%E6%8B%A6%E6%88%AA%E5%AD%90view%E7%9A%84%E4%BA%8B%E4%BB%B6%E4%B8%BA%E4%BB%80%E4%B9%88onintercepttouchevent%E4%B8%80%E6%97%A6%E8%BF%94%E5%9B%9Etrue%E5%B0%B1%E5%86%8D%E4%B9%9F%E4%B8%8D%E4%BC%9A%E8%A2%AB%E8%B0%83%E7%94%A8"><strong>附加问题：当ViewGroup在ACTION_MOVE时，满足一定条件，拦截子View的事件，为什么onInterceptTouchEvent一旦返回true，就再也不会被调用？</strong></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
 
-    public Drawable getDrawable(int resId) {
-        if (isDefaultSkin) {
-            return mAppResources.getDrawable(resId);
-        }
-        int skinId = getIdentifier(resId);
-        if (skinId == 0) {
-            return mAppResources.getDrawable(resId);
-        }
-        return mSkinResources.getDrawable(skinId);
-    }
+              </div>
+            </div>
+          </article>
+        </div>
 
-    public Object getBackground(int resId) {
-        String resourceTypeName = mAppResources.getResourceTypeName(resId);
-        if (&quot;color&quot;.equals(resourceTypeName)) {
-            return getColor(resId);
-        } else {
-            return getDrawable(resId);
-        }
-    }
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/android-huan-fu-de-shi-xian-yi-ji-xiang-ying-de-yuan-ma-fen-xi/">
+              <h3 class="post-title">
+                Android换肤的实现以及相应的源码分析
+              </h3>
+            </a>
+          </div>
+        
 
-</code></pre>
-<p>现在资源替换有了，那么如何进行替换？<br>
-这里要先了解View的构建过程，也就是Android是如何把xml的文件解析成View展示到界面的，针对setContentView（R.layout.XXX）进行分析，可以看出最总就是在Activity创建出的RootView进行View解析插入，而且通过源码的分析可以看</p>
-<pre><code class="language-java"> public View inflate(XmlPullParser parser, @Nullable ViewGroup root, boolean attachToRoot) {
-</code></pre>
-<p>因为Android的view是树形结构的，所以一个view必然只能有一个直接父布局，在view的布局测量过程中是受这个父布局约束的。</p>
-<pre><code class="language-java">    /**
-     * Creates a view from a tag name using the supplied attribute set.
-     * &lt;p&gt;
-     * &lt;strong&gt;Note:&lt;/strong&gt; Default visibility so the BridgeInflater can
-     * override it.
-     *
-     * @param parent the parent view, used to inflate layout params
-     * @param name the name of the XML tag used to define the view
-     * @param context the inflation context for the view, typically the
-     *                {@code parent} or base layout inflater context
-     * @param attrs the attribute set for the XML tag used to define the view
-     * @param ignoreThemeAttr {@code true} to ignore the {@code android:theme}
-     *                        attribute (if set) for the view being inflated,
-     *                        {@code false} otherwise
-     */
-    View createViewFromTag(View parent, String name, Context context, AttributeSet attrs,
-            boolean ignoreThemeAttr) {
-        if (name.equals(&quot;view&quot;)) {
-            name = attrs.getAttributeValue(null, &quot;class&quot;);
-        }
+        
 
-        // Apply a theme wrapper, if allowed and one is specified.
-        if (!ignoreThemeAttr) {
-            final TypedArray ta = context.obtainStyledAttributes(attrs, ATTRS_THEME);
-            final int themeResId = ta.getResourceId(0, 0);
-            if (themeResId != 0) {
-                context = new ContextThemeWrapper(context, themeResId);
-            }
-            ta.recycle();
-        }
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
 
-        if (name.equals(TAG_1995)) {
-            // Let's party like it's 1995!
-            return new BlinkLayout(context, attrs);
-        }
+      </div>
+    </div>
 
-        try {
-            View view;
-            if (mFactory2 != null) {
-                view = mFactory2.onCreateView(parent, name, context, attrs);
-            } else if (mFactory != null) {
-                view = mFactory.onCreateView(name, context, attrs);
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
             } else {
-                view = null;
+              link.classList.add("current");
             }
-
-            if (view == null &amp;&amp; mPrivateFactory != null) {
-                view = mPrivateFactory.onCreateView(parent, name, context, attrs);
-            }
-
-            if (view == null) {
-                final Object lastContext = mConstructorArgs[0];
-                mConstructorArgs[0] = context;
-                try {
-                    if (-1 == name.indexOf('.')) {
-                        view = onCreateView(parent, name, attrs);
-                    } else {
-                        view = createView(name, null, attrs);
-                    }
-                } finally {
-                    mConstructorArgs[0] = lastContext;
-                }
-            }
-
-            return view;
-        } catch (InflateException e) {
-            throw e;
-
-        } catch (ClassNotFoundException e) {
-            final InflateException ie = new InflateException(attrs.getPositionDescription()
-                    + &quot;: Error inflating class &quot; + name, e);
-            ie.setStackTrace(EMPTY_STACK_TRACE);
-            throw ie;
-
-        } catch (Exception e) {
-            final InflateException ie = new InflateException(attrs.getPositionDescription()
-                    + &quot;: Error inflating class &quot; + name, e);
-            ie.setStackTrace(EMPTY_STACK_TRACE);
-            throw ie;
-        }
-    }
-</code></pre>
-<p>这是LayoutInflater中的view创建过程，其中上面会有mFactory2，mFactory，mPrivateFactory，三个提供的拦截器，如果这三个中有一个实现的了View的创建过程，那么就直接返回对应的View了，这就给到了我们去获取和修改View的可能性，而view的创建方法就是通过解析到的view节点名称然后去通过类名反射创建（两个参数）</p>
-<p>所以换肤这块有两种思路，一种构建新的LayoutInflater来接管系统的创建，二是设置mFactory2来进行拦截创建。</p>
-<p>所以现在通过继承mFactory2来实现：</p>
-<pre><code class="language-java">public class SkinLayoutInflaterFactory implements LayoutInflater.Factory2, Observer {
-
-    private static final String[] mClassPrefixList = {
-            &quot;android.widget.&quot;,
-            &quot;android.webkit.&quot;,
-            &quot;android.app.&quot;,
-            &quot;android.view.&quot;
-    };
-
-    //记录对应VIEW的构造函数
-    private static final Class&lt;?&gt;[] mConstructorSignature = new Class[] {
-            Context.class, AttributeSet.class};
-
-    private static final HashMap&lt;String, Constructor&lt;? extends View&gt;&gt; mConstructorMap =
-            new HashMap&lt;String, Constructor&lt;? extends View&gt;&gt;();
-
-    // 当选择新皮肤后需要替换View与之对应的属性
-    // 页面属性管理器
-    private SkinAttribute skinAttribute;
-    // 用于获取窗口的状态框的信息
-    private Activity activity;
-
-    public SkinLayoutInflaterFactory(Activity activity) {
-        this.activity = activity;
-        skinAttribute = new SkinAttribute();
-    }
-
-    @Override
-    public View onCreateView(View parent, String name, Context context, AttributeSet attrs) {
-        //换肤就是在需要时候替换 View的属性(src、background等)
-        //所以这里创建 View,从而修改View属性
-        View view = createSDKView(name, context, attrs);
-        if (null == view) {
-            view = createView(name, context, attrs);
-        }
-        //这就是我们加入的逻辑
-        if (null != view) {
-            //加载属性
-            skinAttribute.look(view, attrs);
-        }
-        return view;
-    }
-
-    private View createSDKView(String name, Context context, AttributeSet
-            attrs) {
-        //如果包含 . 则不是SDK中的view 可能是自定义view包括support库中的View
-        if (-1 != name.indexOf('.')) {
-            return null;
-        }
-        //不包含就要在解析的 节点 name前，拼上： android.widget. 等尝试去反射
-        for (int i = 0; i &lt; mClassPrefixList.length; i++) {
-            View view = createView(mClassPrefixList[i] + name, context, attrs);
-            if(view!=null){
-                return view;
-            }
-        }
-        return null;
-    }
-
-    private View createView(String name, Context context, AttributeSet
-            attrs) {
-        Constructor&lt;? extends View&gt; constructor = findConstructor(context, name);
-        try {
-            return constructor.newInstance(context, attrs);
-        } catch (Exception e) {
-        }
-        return null;
-    }
-
-    private Constructor&lt;? extends View&gt; findConstructor(Context context, String name) {
-        Constructor&lt;? extends View&gt; constructor = mConstructorMap.get(name);
-        if (constructor == null) {
-            try {
-                Class&lt;? extends View&gt; clazz = context.getClassLoader().loadClass
-                        (name).asSubclass(View.class);
-                constructor = clazz.getConstructor(mConstructorSignature);
-                mConstructorMap.put(name, constructor);
-            } catch (Exception e) {
-            }
-        }
-        return constructor;
-    }
-
-
-
-
-    @Override
-    public View onCreateView(String name, Context context, AttributeSet attrs) {
-        return null;
-    }
-
-    //如果有人发送通知，这里就会执行
-    @Override
-    public void update(Observable o, Object arg) {
-        SkinThemeUtils.updateStatusBarColor(activity);
-        skinAttribute.applySkin();
-    }
-}
-</code></pre>
-<p>属性的收集，因为我们能够替换的只有资源，例如文字的颜色，背景，图片的src，背景等等。</p>
-<pre><code class="language-java">package com.tojoy.skin.lib;
-
-import android.graphics.drawable.ColorDrawable;
-import android.graphics.drawable.Drawable;
-import android.util.AttributeSet;
-import android.view.View;
-import android.widget.ImageView;
-import android.widget.TextView;
-
-import androidx.core.view.ViewCompat;
-
-
-import com.tojoy.skin.lib.utils.SkinResources;
-import com.tojoy.skin.lib.utils.SkinThemeUtils;
-
-import java.util.ArrayList;
-import java.util.List;
-
-/**
- * &lt;pre&gt;
- *    author : heyueyang
- *    time   : 2021/10/28
- *    desc   :  所有需要换肤的view的所对应的属性
- *    version: 1.0
- */
-class SkinAttribute {
-    private static final List&lt;String&gt; mAttributes = new ArrayList&lt;&gt;();
-
-    static {
-        mAttributes.add(&quot;background&quot;);
-        mAttributes.add(&quot;src&quot;);
-        mAttributes.add(&quot;textColor&quot;);
-        mAttributes.add(&quot;drawableLeft&quot;);
-        mAttributes.add(&quot;drawableTop&quot;);
-        mAttributes.add(&quot;drawableRight&quot;);
-        mAttributes.add(&quot;drawableBottom&quot;);
-    }
-
-    //记录换肤需要操作的View与属性信息
-    private List&lt;SkinView&gt; mSkinViews = new ArrayList&lt;&gt;();
-
-    /**
-     * 记录一个view上需要换肤的属性
-     * @param view
-     * @param attrs
-     */
-    public void look(View view, AttributeSet attrs) {
-        List&lt;SkinPair&gt; mSkinPairs = new ArrayList&lt;&gt;();
-        for (int i = 0; i &lt; attrs.getAttributeCount(); i++) {
-            String attrName = attrs.getAttributeName(i);
-            if (mAttributes.contains(attrName)) {
-                String attrValue = attrs.getAttributeValue(i);
-                /**
-                 * # 写死的
-                 * ？ 系统的 例如？actionBarHeight
-                 * @ 自定义的，正常使用的
-                 */
-                if (attrValue.startsWith(&quot;#&quot;)) {
-                    continue;
-                }
-                int resId;
-                if (attrValue.startsWith(&quot;?&quot;)) {
-                    int attrId = Integer.parseInt(attrValue.substring(1));
-                    resId = SkinThemeUtils.getResId(view.getContext(), new int[]{attrId})[0];
-                } else {
-                    resId = Integer.parseInt(attrValue.substring(1));
-                }
-                SkinPair skinPair = new SkinPair(attrName, resId);
-                mSkinPairs.add(skinPair);
-            }
-        }
-        if (!mSkinPairs.isEmpty() || view instanceof SkinViewSupport) {
-            SkinView skinView = new SkinView(view, mSkinPairs);
-            skinView.applySkin();
-            mSkinViews.add(skinView);
-        }
-    }
-
-    /*
-   对所有的view中的所有的属性进行皮肤修改
- */
-    public void applySkin() {
-        for (SkinView mSkinView : mSkinViews) {
-            mSkinView.applySkin();
-        }
-    }
-
-
-    static class SkinView {
-        //替换的view
-        View mView;
-        //替换的属性
-        List&lt;SkinPair&gt; mPairs;
-
-        public SkinView(View view, List&lt;SkinPair&gt; pairs) {
-            mView = view;
-            mPairs = pairs;
-        }
-
-        /**
-         * 进行相应的属性替换
-         */
-        public void applySkin() {
-            applySkinSupport();
-            for (SkinPair pair : mPairs) {
-                Drawable left = null, top = null, right = null, bottom = null;
-                switch (pair.attributeName) {
-                    case &quot;background&quot;:
-                        Object background = SkinResources.getInstance().getBackground(pair.resId);
-                        if (background instanceof Integer) {
-                            mView.setBackgroundColor((int) background);
-                        } else {
-                            ViewCompat.setBackground(mView, (Drawable) background);
-                        }
-                        break;
-                    case &quot;src&quot;:
-                        background = SkinResources.getInstance().getBackground(pair.resId);
-                        if (background instanceof Integer) {
-                            ((ImageView) mView).setImageDrawable(new ColorDrawable((Integer) background));
-                        } else {
-                            ((ImageView) mView).setImageDrawable((Drawable) background);
-                        }
-                        break;
-                    case &quot;textColor&quot;:
-                        ((TextView) mView).setTextColor(SkinResources.getInstance().getColorStateList(pair.resId));
-                        break;
-                    case &quot;drawableLeft&quot;:
-                        left = SkinResources.getInstance().getDrawable(pair.resId);
-                        break;
-                    case &quot;drawableTop&quot;:
-                        top = SkinResources.getInstance().getDrawable(pair.resId);
-                        break;
-                    case &quot;drawableRight&quot;:
-                        right = SkinResources.getInstance().getDrawable(pair.resId);
-                        break;
-                    case &quot;drawableBottom&quot;:
-                        bottom = SkinResources.getInstance().getDrawable(pair.resId);
-                        break;
-                    default:
-                        break;
-                }
-                if (left != null || top != null || right != null || bottom != null) {
-                    ((TextView) mView).setCompoundDrawablesRelativeWithIntrinsicBounds(left, top,
-                            right, bottom);
-                }
-            }
-        }
-
-        private void applySkinSupport() {
-            if (mView instanceof SkinViewSupport) {
-                ((SkinViewSupport) mView).applySkin();
-            }
-        }
-
-    }
-
-
-    static class SkinPair {
-        //属性名
-        String attributeName;
-        //属性id
-        int resId;
-
-        public SkinPair(String attributeName, int resId) {
-            this.attributeName = attributeName;
-            this.resId = resId;
-        }
-    }
-}
-
-</code></pre>
-<p>所以整个需要替换属性的View的结构，替换的view和需要替换的属性，而属性又分为，属性名和id。</p>
-<p>下个问题Factory设置的实际，必须在创建View之前，如果是只有就收集不到相关的信息</p>
-<pre><code class="language-java">package com.tojoy.skin.lib;
-
-import android.app.Activity;
-import android.app.Application;
-import android.os.Bundle;
-import android.util.ArrayMap;
-import android.view.LayoutInflater;
-
-
-import com.tojoy.skin.lib.utils.SkinThemeUtils;
-
-import java.lang.reflect.Field;
-import java.util.Observable;
-
-/**
- * &lt;pre&gt;
- *    author : heyueyang
- *    time   : 2021/11/01
- *    desc   : 在这个进行activity中Layoutinflater的fatory2的设置替换，并且设置Observer的绑定设置
- *    version: 1.0
- */
-public class ApplicationActivityLifecycle implements Application.ActivityLifecycleCallbacks {
-
-    private Observable mObservable;
-    private ArrayMap&lt;Activity, SkinLayoutInflaterFactory&gt; mMap = new ArrayMap&lt;&gt;();
-
-    public ApplicationActivityLifecycle(Observable observable) {
-        mObservable = observable;
-    }
-
-    @Override
-    public void onActivityCreated(Activity activity, Bundle savedInstanceState) {
-        SkinThemeUtils.updateStatusBarColor(activity);
-        LayoutInflater layoutInflater = activity.getLayoutInflater();
-
-        try {
-            Field field = LayoutInflater.class.getDeclaredField(&quot;mFactorySet&quot;);
-            field.setAccessible(true);
-            field.setBoolean(layoutInflater, false);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        SkinLayoutInflaterFactory skinLayoutInflaterFactory =
-                new SkinLayoutInflaterFactory(activity);
-        layoutInflater.setFactory2(skinLayoutInflaterFactory);
-        mMap.put(activity, skinLayoutInflaterFactory);
-        mObservable.addObserver(skinLayoutInflaterFactory);
-    }
-
-    @Override
-    public void onActivityStarted(Activity activity) {
-
-    }
-
-    @Override
-    public void onActivityResumed(Activity activity) {
-
-    }
-
-    @Override
-    public void onActivityPaused(Activity activity) {
-
-    }
-
-    @Override
-    public void onActivityStopped(Activity activity) {
-
-    }
-
-    @Override
-    public void onActivitySaveInstanceState(Activity activity, Bundle outState) {
-
-    }
-
-    @Override
-    public void onActivityDestroyed(Activity activity) {
-        SkinLayoutInflaterFactory skinLayoutInflaterFactory = mMap.remove(activity);
-        SkinManager.getInstance().deleteObserver(skinLayoutInflaterFactory);
-    }
-}
-
-</code></pre>
-<p>工厂和Activity进行绑定并通过Observable来进行通知触发换肤改变。</p>
-<pre><code class="language-java">
-package com.tojoy.skin.lib;
-
-import android.app.Application;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
-import android.content.res.AssetManager;
-import android.content.res.Resources;
-import android.text.TextUtils;
-
-import com.tojoy.skin.lib.utils.SkinResources;
-
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.util.Observable;
-
-/**
- * &lt;pre&gt;
- *    author : heyueyang
- *    time   : 2021/10/29
- *    desc   :
- *    version: 1.0
- */
-public class SkinManager extends Observable {
-
-    private volatile static SkinManager instance;
-
-    private Application mContext;
-
-    private ApplicationActivityLifecycle mLifecycle;
-
-    public static void init(Application application) {
-        if (instance == null) {
-            synchronized (SkinManager.class) {
-                if (instance == null) {
-                    instance = new SkinManager(application);
-                }
-            }
-        }
-    }
-
-    private SkinManager(Application context) {
-        mContext = context;
-        SkinPreference.init(context);
-        SkinResources.init(context);
-        mLifecycle = new ApplicationActivityLifecycle(this);
-        context.registerActivityLifecycleCallbacks(mLifecycle);
-        loadSkin(SkinPreference.getInstance().getSkin());
-    }
-
-    public static SkinManager getInstance() {
-        return instance;
-    }
-
-    public void loadSkin(String skinPath) {
-        if (TextUtils.isEmpty(skinPath)) {
-            SkinPreference.getInstance().reset();
-            SkinResources.getInstance().reset();
-        } else {
-            try {
-                Resources appResources = mContext.getResources();
-                //构建AssetManager
-                AssetManager assetManager = AssetManager.class.newInstance();
-                Method addAssetPath = assetManager.getClass().getMethod(&quot;addAssetPath&quot;,
-                        String.class);
-                addAssetPath.invoke(assetManager, skinPath);
-
-                Resources skinResource = new Resources(assetManager,
-                        appResources.getDisplayMetrics(), appResources.getConfiguration());
-
-                PackageManager manager = mContext.getPackageManager();
-                PackageInfo skinInfo = manager.getPackageArchiveInfo(skinPath,
-                        PackageManager.GET_ACTIVITIES);
-                String skinPackageName = skinInfo.packageName;
-                SkinResources.getInstance().applySkin(skinResource, skinPackageName);
-            } catch (IllegalAccessException e) {
-                e.printStackTrace();
-            } catch (InstantiationException e) {
-                e.printStackTrace();
-            } catch (NoSuchMethodException e) {
-                e.printStackTrace();
-            } catch (InvocationTargetException e) {
-                e.printStackTrace();
-            }
-        }
-        setChanged();
-        notifyObservers(null);
-    }
-}
-</code></pre>
-<p>Assets的路径文件不能直接访问，所以需要先将文件拷贝到目录下再进行访问。</p>
-<hr>
-<p>一个单独要注意的问题，因为LayoutInflater的限定是只能有一个Factory，所以这里一个背景库给到的解决方案是获取已经设置过的Factory来进行view的创建<br>
-<a href="https://github.com/JavaNoober/BackgroundLibrary">GitHub - JavaNoober/BackgroundLibrary: A framework for directly generating shape through Tags, no need to write shape.xml again（通过标签直接生成shape，无需再写shape.xml）</a></p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Android应用冷启动流程，以及view.post（）为什么能获取到view的宽高]]></title>
-        <id>https://arms-merchants.github.io/post/android-ying-yong-leng-qi-dong-liu-cheng-yi-ji-viewpostwei-shi-me-neng-huo-qu-dao-view-de-kuan-gao/</id>
-        <link href="https://arms-merchants.github.io/post/android-ying-yong-leng-qi-dong-liu-cheng-yi-ji-viewpostwei-shi-me-neng-huo-qu-dao-view-de-kuan-gao/">
-        </link>
-        <updated>2020-11-23T01:21:44.000Z</updated>
-        <content type="html"><![CDATA[<p><a href="https://juejin.cn/post/6895735092438630407">原文链接</a></p>
-<h2 id="1应用启动流程">1.应用启动流程</h2>
-<p>应用的冷启动流程-》首先要和zygote建立socket连接，将创建进程需要的参数发给zygote，zygote服务端收到参数之后调用ZygoteConnection.processOneCommand()处理参数，并fork出应用进程。最后通过findStaticMain（）找到ActivityThread类的main（）方法并执行，应用进程启动。</p>
-<p>ActivityThread不是一个线程类，但它运行在主线程，可以把它认为是主线程也没关系。在main（）中，创建ActivityThread对象，调用其attach（），并开启主线程消息循环，基于事件的消息队列机制开始工作了。</p>
-<p>在ActivityThread.attach()方法，Binder调用了AMS.attachApplication()，主要完成了两件事：</p>
-<ol>
-<li>
-<p>将当前进程进程和AMS进行绑定，然后Binder调用回应用进程的Application.bindApplication()方法，进行客户端的准备工作，创建Context，创建Application等等。</p>
-</li>
-<li>
-<p>mStackSupervisor.attachApplicationLocked(app),最终调用到realStartActivityLocked()启动Activity</p>
-</li>
-</ol>
-<p><a href="https://luyao.tech/archives/startactivity">Activity启动流程</a></p>
-<pre><code class="language-java">&gt; ActivityThread.java
-
-private Activity performLaunchActivity(ActivityClientRecord r, Intent customIntent) {
-    ...
-    // 获取 ComponentName
-    ComponentName component = r.intent.getComponent();
-    ...
-    // 创建 ContextImpl 对象
-    ContextImpl appContext = createBaseContextForActivity(r);
-    ...
-    // 反射创建 Activity 对象
-    activity = mInstrumentation.newActivity(cl, component.getClassName(), r.intent);
-    ......
-    // 创建 Application 对象
-    Application app = r.packageInfo.makeApplication(false, mInstrumentation);
-    ......      
-	// attach 方法中会创建 PhoneWindow 对象
-    activity.attach(appContext, this, getInstrumentation(), r.token,
-            r.ident, app, r.intent, r.activityInfo, title, r.parent,
-            r.embeddedID, r.lastNonConfigurationInstances, config,
-            r.referrer, r.voiceInteractor, window, r.configCallback);
-
-             
-    // 执行 onCreate()
-    if (r.isPersistable()) {
-        mInstrumentation.callActivityOnCreate(activity, r.state, r.persistentState);
-    } else {
-        mInstrumentation.callActivityOnCreate(activity, r.state);
-    }
-    ...
-    return activity;
-}
-</code></pre>
-<p>mInstrumentation.callActivityOnCreate方法最终会回调Activity.onCreat()方法。到这里setContentView()方法就被执行了。setContentView最终的结果就是创建DecorView，然后根据布局id解析xml，将得到的view塞进DecorView。到这一步我们只是得到了一个空壳子View树，它并没有被添加到屏幕上。<br>
-然后跳过onStart（）去看onResume（）</p>
-<p>Activity 的生命周期是由 ClientLifecycleManager 类来调度的，具体原理可以看这篇文章 <a href="https://luyao.tech/archives/activitylifecycle1#clienttransactionaddcallback">从源码看 Activity 生命周期</a> 。</p>
-<pre><code class="language-java">&gt; ActivityThread.java
-
-public void handleResumeActivity(IBinder token, boolean finalStateRequest, boolean isForward,
-       String reason) {
-   ...
-   // 1. 回调 onResume
-   final ActivityClientRecord r = performResumeActivity(token, finalStateRequest, reason);
-   ···
-   View decor = r.window.getDecorView();
-   decor.setVisibility(View.INVISIBLE);
-   ViewManager wm = a.getWindowManager();
-   WindowManager.LayoutParams l = r.window.getAttributes();
-   // 2. 添加 decorView 到 WindowManager
-   wm.addView(decor, l);
-   ...
-}
-
-</code></pre>
-<p>wm.addView(decor, l) 最终调用到 WindowManagerGlobal.addView() 。</p>
-<pre><code class="language-java">
-public void addView(View view, ViewGroup.LayoutParams params,
-       Display display, Window parentWindow) {
-   ...
-   // 1. 重点，初始化 ViewRootImpl
-   root = new ViewRootImpl(view.getContext(), display);
-   // 2. 重点，发起绘制并显示到屏幕上
-   root.setView(view, wparams, panelParentView);
-
-</code></pre>
-<pre><code class="language-java">public ViewRootImpl(Context context, Display display) {
-   ...
-   // 1. IWindowSession 代理对象，与 WMS 进行 Binder 通信
-   mWindowSession = WindowManagerGlobal.getWindowSession();
-   ...
-   // 2.
-   mWidth = -1;
-   mHeight = -1;
-   ...
-   // 3. 初始化 AttachInfo
-   // 记住 mAttachInfo 是在这里被初始化的
-   mAttachInfo = new View.AttachInfo(mWindowSession, mWindow, display, this, mHandler, this,
-           context);
-   ...
-   // 4. 初始化 Choreographer，通过 Threadlocal 存储
-   mChoreographer = Choreographer.getInstance();
-}
-
-</code></pre>
-<ol>
-<li>初始化 mWindowSession，它可以 WMS 进行 Binder 通信</li>
-<li>这里能看到宽高还未赋值</li>
-<li>初始化 AttachInfo，这里着重记一下，后面会再提到</li>
-<li>初始化 Choreographer，上篇文章 面试官：如何监测应用的 FPS ？ 详细介绍过</li>
-</ol>
-<pre><code class="language-java">
-&gt; ViewRootImpl.java
-
-// 参数 view 就是 DecorView
-public void setView(View view, WindowManager.LayoutParams attrs, View panelParentView) {
-   synchronized (this) {
-       if (mView == null) {
-           mView = view;
-
-           // 1. 发起首次绘制
-           requestLayout();
-
-           // 2. Binder 调用 Session.addToDisplay()，将 window 添加到屏幕
-                   res = mWindowSession.addToDisplay(mWindow, mSeq, mWindowAttributes,
-                           getHostVisibility(), mDisplay.getDisplayId(), mWinFrame,
-                           mAttachInfo.mContentInsets, mAttachInfo.mStableInsets,
-                           mAttachInfo.mOutsets, mAttachInfo.mDisplayCutout, mInputChannel);
-
-           // 3. 将 decorView 的 parent 赋值为 ViewRootImpl
-           view.assignParent(this);
-       }
-   }
-}
-</code></pre>
-<pre><code class="language-java">&gt; ViewRootImpl.java
-
-public void requestLayout() {
-    if (!mHandlingLayoutInLayoutRequest) {
-		// 检查线程
-        checkThread();
-        mLayoutRequested = true;
-        // 重点
-        scheduleTraversals();
-    }
-}
-
-</code></pre>
-<p>ViewRootImpl.scheduleTraversals() 方法在 上篇文章 中详细介绍过，这里大致总结一下：</p>
-<p>ViewRootImpl.scheduleTraversals() 方法中会建立同步屏障，优先处理异步消息。通过 Choreographer.postCallback() 方法提交了任务 mTraversalRunnable，这个任务就是负责 View 的测量，布局，绘制。<br>
-Choreographer.postCallback() 方法通过 DisplayEventReceiver.nativeScheduleVsync() 方法向系统底层注册了下一次 vsync 信号的监听。当下一次 vsync 来临时，系统会回调其 dispatchVsync() 方法，最终回调 FrameDisplayEventReceiver.onVsync() 方法。<br>
-FrameDisplayEventReceiver.onVsync() 方法中取出之前提交的 mTraversalRunnable 并执行。这样就完成了一次绘制流程。</p>
-<p>mTraversalRunnable 中执行的是 doTraversal() 方法。</p>
-<pre><code class="language-java">&gt; ViewRootImpl.java
-
-void doTraversal() {
-if (mTraversalScheduled) {
-    // 1. mTraversalScheduled 置为 false
-    mTraversalScheduled = false;
-    // 2. 移除同步屏障
-    mHandler.getLooper().getQueue().removeSyncBarrier(mTraversalBarrier);
-
-    // 3. 开始布局，测量，绘制流程
-    performTraversals();
-    ......
-}
-</code></pre>
-<pre><code class="language-java">&gt; ViewRootImpl.java
-
-private void performTraversals() {
-    ...
-    // 1. 绑定 Window，重点记忆一下
-    host.dispatchAttachedToWindow(mAttachInfo, 0);
-    mAttachInfo.mTreeObserver.dispatchOnWindowAttachedChange(true);
-
-    getRunQueue().executeActions(mAttachInfo.mHandler);
-
-    // 2. 请求 WMS 计算窗口大小
-    relayoutResult = relayoutWindow(params, viewVisibility, insetsPending);
-
-    // 3. 测量
-    performMeasure(childWidthMeasureSpec, childHeightMeasureSpec);
-
-    // 4. 布局
-    performLayout(lp, mWidth, mHeight);
-
-    // 5. 绘制
-    performDraw();
-}
-</code></pre>
-<p>到此整个布局的测量和绘制都结束，接下啦所以我们就可以明白为什么在activity中的onCreate以及onResume中为什么无法直接获取到view的宽高。</p>
-<h2 id="2viewpost">2.view.post()</h2>
-<pre><code class="language-java">&gt; View.java
-
-public boolean post(Runnable action) {
-  final AttachInfo attachInfo = mAttachInfo;
-  if (attachInfo != null) {
-      // 1. attachInfo 不为空，通过 mHandler 发送
-      return attachInfo.mHandler.post(action);
-  }
-  // 2. attachInfo 为空，放入队列中
-  getRunQueue().post(action);
-  return true;
-}
-
-</code></pre>
-<ol>
-<li>attachInfo 是在 ViewRootImpl 的构造函数中初始化的，</li>
-<li>ViewRootImpl 是在 WindowManagerGlobal.addView() 创建的</li>
-<li>WindowManagerGlobal.addView() 是在 ActivityThread 的 handleResumeActivity() 中调用的，但是是在 Activity.onResume() 回调之后</li>
-</ol>
-<p>根据 ViewRootImpl 是否已经创建，View.post() 会执行不同的逻辑。如果 ViewRootImpl 已经创建，即 mAttachInfo 已经初始化，直接通过 Handler 发送消息来执行任务。如果 ViewRootImpl 未创建，即 View 尚未开始绘制，会将任务保存为 HandlerAction，暂存在队列 HandlerActionQueue 中，等到 View 开始绘制，执行 performTraversal() 方法时，在 dispatchAttachedToWindow() 方法中通过 Handler 分发 HandlerActionQueue 中暂存的任务。<br>
-另外要注意，View 绘制是发生在一次 Meesage 处理过程中的，View.post() 执行的任务也是发生在一次 Message 处理过程中的，它们一定是有先后顺序的。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Hello Gridea]]></title>
-        <id>https://arms-merchants.github.io/post/hello-gridea/</id>
-        <link href="https://arms-merchants.github.io/post/hello-gridea/">
-        </link>
-        <updated>2018-12-11T16:00:00.000Z</updated>
-        <summary type="html"><![CDATA[<p>👏  欢迎使用 <strong>Gridea</strong> ！<br>
-✍️  <strong>Gridea</strong> 一个静态博客写作客户端。你可以用它来记录你的生活、心情、知识、笔记、创意... ...</p>
-]]></summary>
-        <content type="html"><![CDATA[<p>👏  欢迎使用 <strong>Gridea</strong> ！<br>
-✍️  <strong>Gridea</strong> 一个静态博客写作客户端。你可以用它来记录你的生活、心情、知识、笔记、创意... ...</p>
-<!-- more -->
-<p><a href="https://github.com/getgridea/gridea">Github</a><br>
-<a href="https://gridea.dev/">Gridea 主页</a><br>
-<a href="http://fehey.com/">示例网站</a></p>
-<h2 id="特性">特性👇</h2>
-<p>📝  你可以使用最酷的 <strong>Markdown</strong> 语法，进行快速创作</p>
-<p>🌉  你可以给文章配上精美的封面图和在文章任意位置插入图片</p>
-<p>🏷️  你可以对文章进行标签分组</p>
-<p>📋  你可以自定义菜单，甚至可以创建外部链接菜单</p>
-<p>💻  你可以在 <strong>Windows</strong>，<strong>MacOS</strong> 或 <strong>Linux</strong> 设备上使用此客户端</p>
-<p>🌎  你可以使用 <strong>𝖦𝗂𝗍𝗁𝗎𝖻 𝖯𝖺𝗀𝖾𝗌</strong> 或 <strong>Coding Pages</strong> 向世界展示，未来将支持更多平台</p>
-<p>💬  你可以进行简单的配置，接入 <a href="https://github.com/gitalk/gitalk">Gitalk</a> 或 <a href="https://github.com/SukkaW/DisqusJS">DisqusJS</a> 评论系统</p>
-<p>🇬🇧  你可以使用<strong>中文简体</strong>或<strong>英语</strong></p>
-<p>🌁  你可以任意使用应用内默认主题或任意第三方主题，强大的主题自定义能力</p>
-<p>🖥  你可以自定义源文件夹，利用 OneDrive、百度网盘、iCloud、Dropbox 等进行多设备同步</p>
-<p>🌱 当然 <strong>Gridea</strong> 还很年轻，有很多不足，但请相信，它会不停向前 🏃</p>
-<p>未来，它一定会成为你离不开的伙伴</p>
-<p>尽情发挥你的才华吧！</p>
-<p>😘 Enjoy~</p>
-]]></content>
-    </entry>
-</feed>
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
