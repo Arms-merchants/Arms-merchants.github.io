@@ -3,7 +3,7 @@
     <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>关于ViewGroup中dispatchTouchEvent的源码分析 | Arms-merchants</title>
-<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1636021999278">
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1636388625630">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
 <link rel="alternate" type="application/atom+xml" title="关于ViewGroup中dispatchTouchEvent的源码分析 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
@@ -26,7 +26,7 @@
       <div class="main-content">
         <div class="site-header">
   <a href="https://arms-merchants.github.io/">
-  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1636021999278" alt="">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1636388625630" alt="">
   </a>
   <h1 class="site-title">
     Arms-merchants
@@ -99,7 +99,8 @@
 <h3 id="一些结论">一些结论：</h3>
 <p>1.如果一个view在ACTION_DOWN时没有消费事件，那么同一事件序列之后的ACTION_MOVE ACTION_UP都不会交由此view处理<br>
 2.如果一个view在ACTION_DOWN时消费了事件，那么同一事件序列之后的ACTION_MOVE ACTION-UP都由此view处理<br>
-3.如果一个ViewGroup在一定条件下，拦截了ACTION_MOVE事件，那么此前消费事件的子view会收到一个ACTION_CANCEL事件，同时onInteceptTouchEvent在此事件序列不会再调用</p>
+3.如果一个ViewGroup在一定条件下，拦截了ACTION_MOVE事件，那么此前消费事件的子view会收到一个ACTION_CANCEL事件，同时onInteceptTouchEvent在此事件序列不会再调用<br>
+4.ViewGroup中可以进行事件分发以及和事件处理，View主要负责事件处理</p>
 <p>分析事件的视图层级关系：<br>
 <img src="https://arms-merchants.github.io//post-images/1635927846282.webp" alt="" loading="lazy"></p>
 <h3 id="action_down的调用时序图">ACTION_DOWN的调用时序图</h3>
