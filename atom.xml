@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://arms-merchants.github.io/</id>
     <title>Arms-merchants</title>
-    <updated>2021-11-22T02:24:00.787Z</updated>
+    <updated>2021-11-26T06:15:20.635Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://arms-merchants.github.io/"/>
     <link rel="self" href="https://arms-merchants.github.io/atom.xml"/>
@@ -10,6 +10,584 @@
     <logo>https://arms-merchants.github.io/images/avatar.png</logo>
     <icon>https://arms-merchants.github.io/favicon.ico</icon>
     <rights>All rights reserved 2021, Arms-merchants</rights>
+    <entry>
+        <title type="html"><![CDATA[ViewPage2嵌套ViewPage2的滑动冲突解决]]></title>
+        <id>https://arms-merchants.github.io/post/viewpage2-qian-tao-viewpage2-de-hua-dong-chong-tu-jie-jue/</id>
+        <link href="https://arms-merchants.github.io/post/viewpage2-qian-tao-viewpage2-de-hua-dong-chong-tu-jie-jue/">
+        </link>
+        <updated>2021-11-26T05:38:49.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="google官方的一个视图demo"><a href="https://github.com/android/views-widgets-samples/tree/master">Google官方的一个视图Demo</a></h2>
+<p>在做测试的时候写了个ViewPage2嵌套ViewPage2的页面，突然发现，内部的ViewPage2响应不到滑动事件，只有外部的ViewPage2能够响应。<br>
+第一反应事件冲突了，好说，继承ViewPage2处理下事件分发就好了，一写？啥？final的类不让继承，好吧再看看其他的解决方案：<br>
+<img src="https://arms-merchants.github.io//post-images/1637905575419.webp" alt="" loading="lazy"><br>
+好吧，也就是ViewPage2是不支持有同向滑动子布局的，如果想要支持滑动需要在onInterceptTouchEvent中处理，并且官方给出了一个解决方案的<a href="https://github.com/android/views-widgets-samples/blob/master/ViewPager2/app/src/main/java/androidx/viewpager2/integration/testapp/NestedScrollableHost.kt#L71">demo</a>，就是在内层的ViewPage2上嵌套一层布局，这个布局自己实现，那么就可以在这个布局中实现onInterceptTouchEvent来处理</p>
+<pre><code class="language-java">import android.widget.FrameLayout
+import android.content.Context
+import android.util.AttributeSet
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
+import androidx.viewpager2.widget.ViewPager2
+import androidx.viewpager2.widget.ViewPager2.ORIENTATION_HORIZONTAL
+import androidx.viewpager2.widget.ViewPager2.ORIENTATION_VERTICAL
+import kotlin.math.absoluteValue
+import kotlin.math.sign
+
+class NestedScrollableHost : FrameLayout {
+    constructor(context: Context) : super(context)
+    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs)
+
+    private var touchSlop = 0
+    private var initialX = 0f
+    private var initialY = 0f
+
+    //这里是获取父的ViewPage2一层一层的往上找
+    private val parentViewPager: ViewPager2?
+        get() {
+            var v: View? = parent as? View
+            while (v != null &amp;&amp; v !is ViewPager2) {
+                v = v.parent as? View
+            }
+            return v as? ViewPager2
+        }
+
+    /**
+     * 在childCount大于0的情况下获取第一位的View
+     */
+    private val child: View? get() = if (childCount &gt; 0) getChildAt(0) else null
+
+    init {
+        //获取一个阀值，在大于这个阀值的情况下才会触发
+        touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    }
+
+    /**
+     * canScrollVertically(1)    true能够向上滑动 false 不能向上滑动
+     * canScrollVertically(-1)   true能够向下滑动 false 不能向下滑动
+     * canScrollHorizontally(1)  true能够向左滑动 false 不能向左滑动
+     * canScrollHorizontally(-1) true能够向右滑动 false 不能向左滑动
+     */
+    private fun canChildScroll(orientation: Int, delta: Float): Boolean {
+        /**
+         * sign的解释 返回参数的符号函数； 如果参数为零，则为零，如果参数大于零，则为 1.0f，如果参数小于零，则为 -1.0f。
+         */
+        val direction = -delta.sign.toInt()
+        //判断在同向时，子view能否继续滑动
+        return when (orientation) {
+            ORIENTATION_HORIZONTAL -&gt; child?.canScrollHorizontally(direction) ?: false
+            ORIENTATION_VERTICAL -&gt; child?.canScrollVertically(direction) ?: false
+            else -&gt; throw IllegalArgumentException()
+        }
+    }
+
+    override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
+        handleInterceptTouchEvent(e)
+        return super.onInterceptTouchEvent(e)
+    }
+
+    private fun handleInterceptTouchEvent(e: MotionEvent) {
+        //获取父ViewPage2的方向，获取不到那说明没有嵌套ViewPage2直接返回
+        val orientation = parentViewPager?.orientation ?: return
+
+        // Early return if child can't scroll in same direction as parent
+        //如果子view在相同的方向上已经不能滚动了，那么也不需要处理了
+        //1和-1分别测试同轴的两个方向，上和下，左和右对应
+        if (!canChildScroll(orientation, -1f) &amp;&amp; !canChildScroll(orientation, 1f)) {
+            return
+        }
+
+        if (e.action == MotionEvent.ACTION_DOWN) {
+            initialX = e.x
+            initialY = e.y
+            //ACTION_DOWN时先把事件拦截掉
+            parent.requestDisallowInterceptTouchEvent(true)
+        } else if (e.action == MotionEvent.ACTION_MOVE) {
+            val dx = e.x - initialX
+            val dy = e.y - initialY
+            //ViewPage2是否是横向滑动的
+            val isVpHorizontal = orientation == ORIENTATION_HORIZONTAL
+
+            // assuming ViewPager2 touch-slop is 2x touch-slop of child
+            //假设父ViewPage2的滑动阀值是childView的阀值的2倍
+            //如果是横向的画x的值取一半
+            val scaledDx = dx.absoluteValue * if (isVpHorizontal) .5f else 1f
+            //在竖向的话Y的值取一半
+            val scaledDy = dy.absoluteValue * if (isVpHorizontal) 1f else .5f
+            //只有这个值大于阀值的的时候才触发
+            if (scaledDx &gt; touchSlop || scaledDy &gt; touchSlop) {
+                if (isVpHorizontal == (scaledDy &gt; scaledDx)) {
+                    /**
+                     *       也就是横向滑动的话，但是y轴的滑动距离大于x轴，那么也是让父布局拦截
+                     *       如果是竖直方向滑动的话，但是x轴滑动的距离大于y轴的，父布局拦截
+                     *       也就是只要isVpHorizontal的值等于scaledDy &gt; scaledDx那么就让父布局处理，说明不是需要处理的
+                     *       滑动方向
+                     */
+                    // Gesture is perpendicular, allow all parents to intercept
+                    parent.requestDisallowInterceptTouchEvent(false)
+                } else {
+                    //如果子View能滑动，父布局不处理滑动事件并进行继续的分发，分发的话事件就传递下来了
+                    // Gesture is parallel, query child if movement in that direction is possible
+                    if (canChildScroll(orientation, if (isVpHorizontal) dx else dy)) {
+                        // Child can scroll, disallow all parents to intercept
+                        parent.requestDisallowInterceptTouchEvent(true)
+                    } else {
+                        //不能滑动，那么拦截
+                        // Child cannot scroll, allow all parents to intercept
+                        parent.requestDisallowInterceptTouchEvent(false)
+                    }
+                }
+            }
+        }
+    }
+}
+</code></pre>
+<p>使用的话直接在内层的滑动布局外加一层NestedScrollableHost。</p>
+<h1 id="总结">总结</h1>
+<h2 id="相当于就是你不让我覆写那我写个中间层把你的事件拦截掉往下分发">相当于就是你不让我覆写，那我写个中间层把你的事件拦截掉往下分发。</h2>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[ViewPager的源码分析--TODO]]></title>
+        <id>https://arms-merchants.github.io/post/viewpager-de-yuan-ma-fen-xi-todo/</id>
+        <link href="https://arms-merchants.github.io/post/viewpager-de-yuan-ma-fen-xi-todo/">
+        </link>
+        <updated>2021-11-25T01:28:14.000Z</updated>
+        <content type="html"><![CDATA[<p>这是在基于总的Fragment数量为5，并且第一次数据加载已经完成，从0的tab切换到2的tab的过程，limit为1，分析2的创建已经3的预加载，还有0的destory：</p>
+<pre><code class="language-java">    void populate(int newCurrentItem) {
+        //newCurrentItem =2
+        ViewPager.ItemInfo oldCurInfo = null;
+        if (mCurItem != newCurrentItem) {
+            //oldCurInfo = 0
+            oldCurInfo = infoForPosition(mCurItem);
+            //mCurItem = 2
+            mCurItem = newCurrentItem;
+        }
+
+        mAdapter.startUpdate(this);
+        //mOffscreenPageLimit = 1
+        final int pageLimit = mOffscreenPageLimit;
+        //startPos = 1
+        final int startPos = Math.max(0, mCurItem - pageLimit);
+        //n= 5
+        final int N = mAdapter.getCount();
+        //endPos = 3
+        final int endPos = Math.min(N - 1, mCurItem + pageLimit);
+
+        // Locate the currently focused item or add it if needed.
+        int curIndex = -1;
+        ViewPager.ItemInfo curItem = null;
+        // mItems.size() = 2 (0,1)
+
+        for (curIndex = 0; curIndex &lt; mItems.size(); curIndex++) {
+            final ViewPager.ItemInfo ii = mItems.get(curIndex);
+            if (ii.position &gt;= mCurItem) {
+                if (ii.position == mCurItem) curItem = ii;
+                break;
+            }
+        }
+        //curIndex =2
+        if (curItem == null &amp;&amp; N &gt; 0) {
+            curItem = addNewItem(mCurItem, curIndex);
+        }
+        //把index =2的fragment加入了
+
+        // Fill 3x the available width or up to the number of offscreen
+        // pages requested to either side, whichever is larger.
+        // If we have no current item we have no work to do.
+        if (curItem != null) {
+            float extraWidthLeft = 0.f;
+            //itemIndex = 1
+            int itemIndex = curIndex - 1;
+            //拿到1的ItemInfo
+            ViewPager.ItemInfo ii = itemIndex &gt;= 0 ? mItems.get(itemIndex) : null;
+            final int clientWidth = getClientWidth();
+            final float leftWidthNeeded = clientWidth &lt;= 0 ? 0 :
+                    2.f - curItem.widthFactor + (float) getPaddingLeft() / (float) clientWidth;
+            //pos = 1
+            for (int pos = mCurItem - 1; pos &gt;= 0; pos--) {
+                if (extraWidthLeft &gt;= leftWidthNeeded &amp;&amp; pos &lt; startPos) {
+                    if (ii == null) {
+                        break;
+                    }
+                    if (pos == ii.position &amp;&amp; !ii.scrolling) {
+                        mItems.remove(itemIndex);
+                        mAdapter.destroyItem(this, pos, ii.object);
+                        if (DEBUG) {
+                            Log.i(TAG, &quot;populate() - destroyItem() with pos: &quot; + pos
+                                    + &quot; view: &quot; + ((View) ii.object));
+                        }
+                        itemIndex--;
+                        curIndex--;
+                        ii = itemIndex &gt;= 0 ? mItems.get(itemIndex) : null;
+                    }
+                } else if (ii != null &amp;&amp; pos == ii.position) {
+                    extraWidthLeft += ii.widthFactor;
+                    itemIndex--;
+                    //在1的时候拿到0的ItemInfo
+                    ii = itemIndex &gt;= 0 ? mItems.get(itemIndex) : null;
+                } else {
+                    ii = addNewItem(pos, itemIndex + 1);
+                    extraWidthLeft += ii.widthFactor;
+                    curIndex++;
+                    ii = itemIndex &gt;= 0 ? mItems.get(itemIndex) : null;
+                }
+            }
+
+            float extraWidthRight = curItem.widthFactor;
+            itemIndex = curIndex + 1;
+            if (extraWidthRight &lt; 2.f) {
+                ii = itemIndex &lt; mItems.size() ? mItems.get(itemIndex) : null;
+                final float rightWidthNeeded = clientWidth &lt;= 0 ? 0 :
+                        (float) getPaddingRight() / (float) clientWidth + 2.f;
+                for (int pos = mCurItem + 1; pos &lt; N; pos++) {
+                    if (extraWidthRight &gt;= rightWidthNeeded &amp;&amp; pos &gt; endPos) {
+                        if (ii == null) {
+                            break;
+                        }
+                        if (pos == ii.position &amp;&amp; !ii.scrolling) {
+                            mItems.remove(itemIndex);
+                            mAdapter.destroyItem(this, pos, ii.object);
+                            if (DEBUG) {
+                                Log.i(TAG, &quot;populate() - destroyItem() with pos: &quot; + pos
+                                        + &quot; view: &quot; + ((View) ii.object));
+                            }
+                            ii = itemIndex &lt; mItems.size() ? mItems.get(itemIndex) : null;
+                        }
+                    } else if (ii != null &amp;&amp; pos == ii.position) {
+                        extraWidthRight += ii.widthFactor;
+                        itemIndex++;
+                        ii = itemIndex &lt; mItems.size() ? mItems.get(itemIndex) : null;
+                    } else {
+                        ii = addNewItem(pos, itemIndex);
+                        itemIndex++;
+                        extraWidthRight += ii.widthFactor;
+                        ii = itemIndex &lt; mItems.size() ? mItems.get(itemIndex) : null;
+                    }
+                }
+            }
+
+            calculatePageOffsets(curItem, curIndex, oldCurInfo);
+
+            mAdapter.setPrimaryItem(this, mCurItem, curItem.object);
+        }
+
+        mAdapter.finishUpdate(this);
+
+        // Check width measurement of current pages and drawing sort order.
+        // Update LayoutParams as needed.
+        //3
+        final int childCount = getChildCount();
+        for (int i = 0; i &lt; childCount; i++) {
+            final View child = getChildAt(i);
+            final ViewPager.LayoutParams lp = (ViewPager.LayoutParams) child.getLayoutParams();
+            lp.childIndex = i;
+            if (!lp.isDecor &amp;&amp; lp.widthFactor == 0.f) {
+                // 0 means requery the adapter for this, it doesn't have a valid width.
+                final ViewPager.ItemInfo ii = infoForChild(child);
+                if (ii != null) {
+                    lp.widthFactor = ii.widthFactor;
+                    lp.position = ii.position;
+                }
+            }
+        }
+        sortChildDrawingOrder();
+
+        if (hasFocus()) {
+            View currentFocused = findFocus();
+            ViewPager.ItemInfo ii = currentFocused != null ? infoForAnyChild(currentFocused) : null;
+            if (ii == null || ii.position != mCurItem) {
+                for (int i = 0; i &lt; getChildCount(); i++) {
+                    View child = getChildAt(i);
+                    ii = infoForChild(child);
+                    if (ii != null &amp;&amp; ii.position == mCurItem) {
+                        if (child.requestFocus(View.FOCUS_FORWARD)) {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+</code></pre>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Android一键打包上传蒲公英并发送消息到企业微信]]></title>
+        <id>https://arms-merchants.github.io/post/android-yi-jian-da-bao-shang-chuan-pu-gong-ying-bing-fa-song-xiao-xi-dao-qi-ye-wei-xin-todo/</id>
+        <link href="https://arms-merchants.github.io/post/android-yi-jian-da-bao-shang-chuan-pu-gong-ying-bing-fa-song-xiao-xi-dao-qi-ye-wei-xin-todo/">
+        </link>
+        <updated>2021-11-12T07:52:58.000Z</updated>
+        <content type="html"><![CDATA[<p>实现一键打包上传蒲公英并发送消息到企业微信，涉及到的点就是使用HttpURLConnection来进行数据的传输，两个gradle中方法的调用，以及企业微信api和蒲公英上传api的调用:</p>
+<h2 id="1上传蒲公英的文件">1.上传蒲公英的文件</h2>
+<pre><code class="language-java">import groovy.json.JsonSlurper
+//需要通过这种方式才能去调用给到另外一个gradle中的方法，调用的也不是直接去调用给，也是通过ext中的方法函数调用
+apply([plugin: 'com.android.application', from: project.uri(file(&quot;../packapk/send_message.gradle&quot;))])
+
+afterEvaluate {
+    android.applicationVariants.each { variant -&gt;
+        String variantName = variant.name.capitalize()
+        def task = tasks.create(&quot;apkUploadPGY${variantName}&quot;)
+        task.group = &quot;apk_upload&quot;
+        //依赖微信混淆打包
+        task.dependsOn(&quot;resguard${variantName}&quot;)
+        task.doLast {
+            def currentBuildType = variant.buildType
+            def changeLogPath = new File(project.rootDir, 'packapk/apk_changelog').path
+            def apkFileDir = new File(
+                    project.buildDir,
+                    &quot;outputs/apk/${variant.flavorName}/${variant.buildType.name}&quot;)
+            def uploadFile = findApkFile(apkFileDir)
+            if (uploadFile == null || !uploadFile.exists()) {
+                throw new GradleException(&quot;Could not find apk!&quot;)
+            }
+            def appName = currentBuildType.getManifestPlaceholders()[&quot;APP_NAME&quot;]
+            def appUploadLog = currentBuildType.getManifestPlaceholders()[&quot;APK_UPLOAD_LOG&quot;]
+            def pgyToken = currentBuildType.getManifestPlaceholders()[&quot;PGY_TOKEN&quot;]
+            def wxPushToke = project.QYWX_ROBOT_KEY
+            def versionCode = project.android.defaultConfig.versionName
+            println(&quot;*********** start: uploadFile:${uploadFile.path} ******&quot;)
+            def uploadApkUrl = uploadApk(uploadFile, pgyToken, appName + appUploadLog)
+            if (uploadApkUrl != null) {
+                project.ext.fun.call(wxPushToke, changeLogPath, appName, versionCode, appUploadLog, uploadApkUrl)
+            }
+            println(&quot;*********** end: uploadFile ******&quot;)
+        }
+    }
+}
+
+/*def findApkFile(File apkFile) {
+    println(&quot;apkFile:&quot; + apkFile.name)
+    if (apkFile.isDirectory()) {
+        def files = apkFile.listFiles()
+        for (int i = 0; i &lt; files.length; i++) {
+            def findFile = findApkFile(files[i])
+            if (findFile != null) {
+                return findFile
+            }
+        }
+    } else if (apkFile.name.endsWith(&quot;.apk&quot;)) {
+        return apkFile
+    } else {
+        return null
+    }
+}*/
+
+/**
+ * 查找apk文件
+ * @param apkFile
+ * @return
+ */
+static def findApkFile(File apkFile) {
+    def files = apkFile.listFiles()
+    for (int i = 0; i &lt; files.length; i++) {
+        if (files[i].name.endsWith(&quot;.apk&quot;)) {
+            return files[i]
+        }
+    }
+    return null
+}
+
+def uploadApk(File uploadApkFile, String apiKey, String titleName) {
+    // 查找上传的 apk 文件, 这里需要换成自己 apk 路径
+    println(&quot;uploadApk:&quot; + uploadApkFile.absolutePath + &quot;--&quot; + uploadApkFile.exists())
+    if (uploadApkFile == null || !uploadApkFile.exists()) {
+        throw new RuntimeException(&quot;apk file not exists!&quot;)
+    }
+    println &quot;*************** upload start ***************&quot;
+    String BOUNDARY = UUID.randomUUID().toString(); // 边界标识 随机生成
+    String PREFIX = &quot;--&quot;, LINE_END = &quot;\r\n&quot;;
+    String CONTENT_TYPE = &quot;multipart/form-data&quot;; // 内容类型
+    try {
+        URL url = new URL(&quot;https://www.pgyer.com/apiv2/app/upload&quot;);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setReadTimeout(30000);
+        conn.setConnectTimeout(30000);
+        conn.setDoInput(true); // 允许输入流
+        conn.setDoOutput(true); // 允许输出流
+        conn.setUseCaches(false); // 不允许使用缓存
+        conn.setRequestMethod(&quot;POST&quot;); // 请求方式
+        conn.setRequestProperty(&quot;Charset&quot;, &quot;UTF-8&quot;); // 设置编码
+        conn.setRequestProperty(&quot;connection&quot;, &quot;keep-alive&quot;);
+        conn.setRequestProperty(&quot;Content-Type&quot;, CONTENT_TYPE + &quot;;boundary=&quot; + BOUNDARY);
+        DataOutputStream dos = new DataOutputStream(conn.getOutputStream());
+
+        StringBuffer sb = new StringBuffer();
+        sb.append(PREFIX).append(BOUNDARY).append(LINE_END);//分界符
+        sb.append(&quot;Content-Disposition: form-data; name=\&quot;&quot; + &quot;_api_key&quot; + &quot;\&quot;&quot; + LINE_END);
+        sb.append(&quot;Content-Type: text/plain; charset=UTF-8&quot; + LINE_END);
+        //sb.append(&quot;Content-Transfer-Encoding: 8bit&quot; + LINE_END);
+        sb.append(LINE_END);
+        sb.append(apiKey);//替换成你再蒲公英上申请的apiKey
+        sb.append(LINE_END);//换行！
+        //添加备注说明更新
+        sb.append(PREFIX).append(BOUNDARY).append(LINE_END);//分界符
+        sb.append(&quot;Content-Disposition: form-data; name=\&quot;&quot; + &quot;buildUpdateDescription&quot; + &quot;\&quot;&quot; + LINE_END);
+        sb.append(&quot;Content-Type: text/plain; charset=UTF-8&quot; + LINE_END);
+        //sb.append(&quot;Content-Transfer-Encoding: 8bit&quot; + LINE_END);
+        sb.append(LINE_END);
+        sb.append(titleName);//替换成你再蒲公英上申请的apiKey
+        sb.append(LINE_END);//换行！
+
+        if (uploadApkFile != null) {
+            /**
+             * 当文件不为空，把文件包装并且上传
+             */
+            sb.append(PREFIX);
+            sb.append(BOUNDARY);
+            sb.append(LINE_END);
+            /**
+             * 这里重点注意： name里面的值为服务器端需要key 只有这个key 才可以得到对应的文件
+             * filename是文件的名字，包含后缀名的 比如:abc.png
+             */
+            sb.append(&quot;Content-Disposition: form-data; name=\&quot;file\&quot;; filename=\&quot;&quot; + uploadApkFile.getName() + &quot;\&quot;&quot; + LINE_END);
+            sb.append(&quot;Content-Type: application/octet-stream; charset=UTF-8&quot; + LINE_END);
+            sb.append(LINE_END);
+            dos.write(sb.toString().getBytes())
+
+            InputStream is = new FileInputStream(uploadApkFile)
+            byte[] bytes = new byte[1024];
+            int len = 0;
+            while ((len = is.read(bytes)) != -1) {
+                dos.write(bytes, 0, len);
+            }
+            is.close();
+            dos.write(LINE_END.getBytes());
+            byte[] end_data = (PREFIX + BOUNDARY + PREFIX + LINE_END).getBytes();
+            dos.write(end_data);
+            dos.flush();
+            /**
+             * 获取响应码 200=成功 当响应成功，获取响应的流
+             */
+            int res = conn.getResponseCode();
+            if (res == 200) {
+                println(&quot;Upload request success&quot;);
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))
+                StringBuffer ret = new StringBuffer();
+                String line
+                while ((line = br.readLine()) != null) {
+                    ret.append(line)
+                }
+                String result = ret.toString();
+                println(&quot;Upload result : &quot; + result);
+
+                def resp = new JsonSlurper().parseText(result)
+                println result
+                println &quot;------url:https://www.pgyer.com/${resp.data.buildShortcutUrl}&quot;
+                println &quot;*************** upload finish ***************&quot;
+                return &quot;https://www.pgyer.com/${resp.data.buildShortcutUrl}&quot;
+            } else {
+                println &quot;Upload request fail&quot;
+            }
+        }
+    } catch (MalformedURLException e) {
+        e.printStackTrace();
+    } catch (IOException e) {
+        e.printStackTrace();
+    }
+    return null
+}
+</code></pre>
+<h2 id="2企业微信消息的发送">2.企业微信消息的发送</h2>
+<p>这里需要在对应的群创建一个机器人，然后通过这个机器人进行消息的发送<br>
+其中的apk_chanagelog为一个自定义的文件，记录了当前版本更新的内容，这个内容后续会读取到企业微信发送消息中，告知相应的人员修改的内容：<br>
+seng_message.gradle：</p>
+<pre><code class="language-java">import groovy.json.JsonBuilder
+
+def sendMessage={
+    wxPushToken,changeLogPath, appName,versionCode, uploadType, pgyUrl-&gt;
+        //消息组成，Android+项目名称 +环境：url
+        //更新日志
+        if(wxPushToken == null){
+            println(&quot;企业微信推送的token为空&quot;)
+            return
+        }
+        def change_log = &quot;&quot;
+        File file = new File(changeLogPath)
+        def result = new StringBuilder()
+        if (file.exists()) {
+            try {
+                //按行读取changelog的内容进行拼接
+                BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(file), &quot;UTF-8&quot;))
+                def lineContent
+                while ((lineContent = br.readLine()) != null) {
+                    result.append(System.lineSeparator() + lineContent)
+                }
+                br.close()
+                change_log = result.toString()
+            } catch (Exception e) {
+                e.printStackTrace()
+            }
+        }
+        URL url = new URL(&quot;https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${wxPushToken}&quot;);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setReadTimeout(30000);
+        conn.setConnectTimeout(30000);
+        conn.setDoInput(true); // 允许输入流
+        conn.setDoOutput(true); // 允许输出流
+        conn.setUseCaches(false); // 不允许使用缓存
+        conn.setRequestMethod(&quot;POST&quot;); // 请求方式
+        conn.setRequestProperty(&quot;Content-Type&quot;, &quot;application/json;charset=utf-8&quot;);
+        conn.connect();
+        //groovy的语法进行Json相关的操作，这里是构建json字符串
+        def json = new JsonBuilder()
+        json {
+            msgtype &quot;text&quot;
+            text {
+                content &quot;${appName}-Android${versionCode}${uploadType}:\n${pgyUrl}\n${change_log}&quot;
+            }
+        }
+        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(conn.getOutputStream(), &quot;UTF-8&quot;));
+        println(json.toString())
+        writer.write(json.toString());
+        writer.flush();
+        int res = conn.getResponseCode();
+        if (res == 200) {
+            println(&quot;消息发送成功&quot;);
+        } else {
+            println (&quot;消息发送失败&quot;)
+        }
+}
+//创建一个ext的函数方法对象提供给外部使用
+ext{
+    fun = sendMessage
+}
+</code></pre>
+<h2 id="3参数配置">3.参数配置</h2>
+<p>参数的配置，其中使用到的参数包括PGY_TOKEN（蒲公英的上传token），APK_UPLOAD_LOG（版本的区分标示），APP_NAME（应用名称）</p>
+<pre><code class="language-java">buildTypes{
+    release{
+        manifestPlaceholders=[
+            PGY_TOKEN : &quot;${project.PGY_APPID_RELEASE}&quot;,
+            APK_UPLOAD_LOG : &quot;生产&quot;,
+            APP_NAME:&quot;APP&quot;,
+        ]
+    }
+     debug{
+        manifestPlaceholders=[
+            PGY_TOKEN : &quot;${project.PGY_APPID_RELEASE}&quot;,
+            APK_UPLOAD_LOG : &quot;测试&quot;,
+            APP_NAME:&quot;APP&quot;,
+        ]
+    }
+}
+</code></pre>
+<p>在项目的gradle.properties中的配置:</p>
+<pre><code class="language-java">######上传蒲公英的TOKEN
+#蒲公英测试环境的token
+PGY_APPID_TEST=
+#蒲公英正式环境的token
+PGY_APPID_RELEASE=
+
+######微信机器人消息发送
+QYWX_ROBOT_KEY = 
+</code></pre>
+<p>消息拼接格式：<br>
+&quot;<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mrow><mi>a</mi><mi>p</mi><mi>p</mi><mi>N</mi><mi>a</mi><mi>m</mi><mi>e</mi></mrow><mo>−</mo><mi>A</mi><mi>n</mi><mi>d</mi><mi>r</mi><mi>o</mi><mi>i</mi><mi>d</mi></mrow><annotation encoding="application/x-tex">{appName}-Android</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8777699999999999em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">a</span><span class="mord mathdefault">p</span><span class="mord mathdefault">p</span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="mord mathdefault">a</span><span class="mord mathdefault">m</span><span class="mord mathdefault">e</span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">A</span><span class="mord mathdefault">n</span><span class="mord mathdefault">d</span><span class="mord mathdefault" style="margin-right:0.02778em;">r</span><span class="mord mathdefault">o</span><span class="mord mathdefault">i</span><span class="mord mathdefault">d</span></span></span></span>{versionCode}<span class='katex-error' title='ParseError: KaTeX parse error: Undefined control sequence: \n at position 14: {uploadType}:\̲n̲'>{uploadType}:\n</span>{pgyUrl}\n${change_log}&quot;<br>
+名称-Android版本类别：<br>
+蒲公英的路径<br>
+更新日志内容</p>
+]]></content>
+    </entry>
     <entry>
         <title type="html"><![CDATA[在源码分析的基础上进行滑动冲突的解决]]></title>
         <id>https://arms-merchants.github.io/post/zai-ji-ben-yuan-ma-fen-xi-de-ji-chu-shang-jin-xing-hua-dong-chong-tu-de-jie-jue/</id>
