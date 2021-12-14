@@ -3,7 +3,7 @@
     <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>嵌套滑动机制 | Arms-merchants</title>
-<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1637907285266">
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1639448837136">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
 <link rel="alternate" type="application/atom+xml" title="嵌套滑动机制 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
@@ -26,7 +26,7 @@ NestedScrollingParent
       <div class="main-content">
         <div class="site-header">
   <a href="https://arms-merchants.github.io/">
-  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1637907285266" alt="">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1639448837136" alt="">
   </a>
   <h1 class="site-title">
     Arms-merchants
@@ -86,7 +86,7 @@ NestedScrollingParent
                 2021-11-04
               </span>
               <span>
-                14 min read
+                18 min read
               </span>
               
             </div>
@@ -551,6 +551,170 @@ public class NestedScrollingChildView extends View implements NestedScrollingChi
     }
 }
 </code></pre>
+<h4 id="一个parent的实现">一个Parent的实现</h4>
+<pre><code class="language-java">import android.content.Context;
+
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.core.view.NestedScrollingParent;
+import androidx.core.view.NestedScrollingParentHelper;
+import androidx.core.view.ViewCompat;
+import android.util.AttributeSet;
+import android.view.View;
+import android.widget.FrameLayout;
+import java.util.Arrays;
+
+public class NestedScrollingParentView extends FrameLayout implements NestedScrollingParent{
+
+    private static final String TAG = &quot;NestedParentLayout&quot;;
+
+    private NestedScrollingParentHelper mScrollingParentHelper;
+    public NestedScrollingParentView(@NonNull Context context) {
+        super(context);
+    }
+
+    public NestedScrollingParentView(@NonNull Context context, @Nullable AttributeSet attrs) {
+        super(context, attrs);
+        init();
+    }
+
+    public NestedScrollingParentView(@NonNull Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
+        super(context, attrs, defStyleAttr);
+    }
+
+    private void init() {
+        mScrollingParentHelper = new NestedScrollingParentHelper(this);
+    }
+
+    /**
+     * 有嵌套滑动到来了，问下该父View是否接受嵌套滑动
+     *
+     * @param child            嵌套滑动对应的父类的子类(因为嵌套滑动对于的父View不一定是一级就能找到的，可能挑了两级父View的父View，child的辈分&gt;=target)
+     * @param target           具体嵌套滑动的那个子类
+     * @param nestedScrollAxes 支持嵌套滚动轴。水平方向，垂直方向，或者不指定
+     * @return 是否接受该嵌套滑动
+     */
+    @Override
+    public boolean onStartNestedScroll(View child, View target, int nestedScrollAxes) {
+        return true;
+    }
+
+    /**
+     * 该父View接受了嵌套滑动的请求该函数调用。onStartNestedScroll返回true该函数会被调用。
+     * 参数和onStartNestedScroll一样
+     */
+    @Override
+    public void onNestedScrollAccepted(View child, View target, int nestedScrollAxes) {
+        mScrollingParentHelper.onNestedScrollAccepted(child, target, nestedScrollAxes);
+    }
+
+    /**
+     * 获取嵌套滑动的轴
+     *
+     * @see ViewCompat#SCROLL_AXIS_HORIZONTAL 垂直
+     * @see ViewCompat#SCROLL_AXIS_VERTICAL 水平
+     * @see ViewCompat#SCROLL_AXIS_NONE 都支持
+     */
+    @Override
+    public int getNestedScrollAxes() {
+        return mScrollingParentHelper.getNestedScrollAxes();
+    }
+
+    /**
+     * 停止嵌套滑动
+     *
+     * @param target 具体嵌套滑动的那个子类
+     */
+    @Override
+    public void onStopNestedScroll(View target) {
+        mScrollingParentHelper.onStopNestedScroll(target);
+    }
+
+    /**
+     * 嵌套滑动的子View在滑动之后报告过来的滑动情况
+     *
+     * @param target       具体嵌套滑动的那个子类
+     * @param dxConsumed   水平方向嵌套滑动的子View滑动的距离(消耗的距离)
+     * @param dyConsumed   垂直方向嵌套滑动的子View滑动的距离(消耗的距离)
+     * @param dxUnconsumed 水平方向嵌套滑动的子View未滑动的距离(未消耗的距离)
+     * @param dyUnconsumed 垂直方向嵌套滑动的子View未滑动的距离(未消耗的距离)
+     */
+    @Override
+    public void onNestedScroll(View target, int dxConsumed, int dyConsumed, int dxUnconsumed, int dyUnconsumed) {
+
+    }
+
+
+    /**
+     * 在嵌套滑动的子View未滑动之前告诉过来的准备滑动的情况
+     *
+     * @param target   具体嵌套滑动的那个子类
+     * @param dx       水平方向嵌套滑动的子View想要变化的距离
+     * @param dy       垂直方向嵌套滑动的子View想要变化的距离
+     * @param consumed 这个参数要我们在实现这个函数的时候指定，回头告诉子View当前父View消耗的距离
+     *                 consumed[0] 水平消耗的距离，consumed[1] 垂直消耗的距离 好让子view做出相应的调整
+     */
+    @Override
+    public void onNestedPreScroll(View target, int dx, int dy, int[] consumed) {
+        final View child = target;
+        if (dx &gt; 0) {
+            if (child.getRight() + dx &gt; getWidth()) {
+                dx = child.getRight() + dx - getWidth();//多出来的
+                offsetLeftAndRight(dx);
+                consumed[0] += dx;//父亲消耗
+            }
+
+        } else {
+            if (child.getLeft() + dx &lt; 0) {
+                dx = dx + child.getLeft();
+                offsetLeftAndRight(dx);
+                consumed[0] += dx;//父亲消耗
+            }
+        }
+
+        if (dy &gt; 0) {
+            if (child.getBottom() + dy &gt; getHeight()) {
+                dy = child.getBottom() + dy - getHeight();
+                offsetTopAndBottom(dy);
+                consumed[1] += dy;
+            }
+        } else {
+            if (child.getTop() + dy &lt; 0) {
+                dy = dy + child.getTop();
+                offsetTopAndBottom(dy);
+                consumed[1] += dy;//父亲消耗
+            }
+        }
+    }
+
+    /**
+     * 嵌套滑动的子View在fling之后报告过来的fling情况
+     *
+     * @param target    具体嵌套滑动的那个子类
+     * @param velocityX 水平方向速度
+     * @param velocityY 垂直方向速度
+     * @param consumed  子view是否fling了
+     * @return true 父View是否消耗了fling
+     */
+    @Override
+    public boolean onNestedFling(View target, float velocityX, float velocityY, boolean consumed) {
+        return false;
+    }
+
+    /**
+     * 在嵌套滑动的子View未fling之前告诉过来的准备fling的情况
+     *
+     * @param target    具体嵌套滑动的那个子类
+     * @param velocityX 水平方向速度
+     * @param velocityY 垂直方向速度
+     * @return true 父View是否消耗了fling
+     */
+    @Override
+    public boolean onNestedPreFling(View target, float velocityX, float velocityY) {
+        return false;
+    }
+}
+</code></pre>
 <hr>
 <h3 id="相比与nestedscrollingchild-nestedscrollingchild2和nestedscrollingchild3有什么区别">相比与NestedScrollingChild NestedScrollingChild2和NestedScrollingChild3有什么区别</h3>
 <p>NestedScrollingChild2是继承至NestedScrollingChild，它的方法上多了一个type，这个type的值包括有TYPE_TOUCH 和 TYPE_NON_TOUCH ，用这个来区分是触摸操作还是惯性滑动，这1的时没有这个值，那么就会出现当触摸事件结束，但是还有惯性滑动的时候，父控件停止滑动了，但是子view还在进行惯性的滑动。<br>
@@ -576,6 +740,7 @@ public class NestedScrollingChildView extends View implements NestedScrollingChi
 *
 <ul>
 <li><a href="#%E4%B8%80%E4%B8%AA%E6%A8%A1%E7%89%88%E7%B1%BB%E5%9E%8B%E5%88%9B%E5%BB%BAnestedscrollchild%E4%BB%A3%E7%A0%81">一个模版类型创建NestedScrollChild代码</a></li>
+<li><a href="#%E4%B8%80%E4%B8%AAparent%E7%9A%84%E5%AE%9E%E7%8E%B0">一个Parent的实现</a></li>
 <li><a href="#%E7%9B%B8%E6%AF%94%E4%B8%8Enestedscrollingchild-nestedscrollingchild2%E5%92%8Cnestedscrollingchild3%E6%9C%89%E4%BB%80%E4%B9%88%E5%8C%BA%E5%88%AB">相比与NestedScrollingChild NestedScrollingChild2和NestedScrollingChild3有什么区别</a></li>
 </ul>
 </li>
