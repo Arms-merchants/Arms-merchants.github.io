@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://arms-merchants.github.io/</id>
     <title>Arms-merchants</title>
-    <updated>2021-12-27T04:01:22.516Z</updated>
+    <updated>2021-12-27T10:14:09.600Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://arms-merchants.github.io/"/>
     <link rel="self" href="https://arms-merchants.github.io/atom.xml"/>
@@ -10,6 +10,771 @@
     <logo>https://arms-merchants.github.io/images/avatar.png</logo>
     <icon>https://arms-merchants.github.io/favicon.ico</icon>
     <rights>All rights reserved 2021, Arms-merchants</rights>
+    <entry>
+        <title type="html"><![CDATA[手势控制以及多点触控]]></title>
+        <id>https://arms-merchants.github.io/post/shou-shi-kong-zhi-yi-ji-duo-dian-hong-kong/</id>
+        <link href="https://arms-merchants.github.io/post/shou-shi-kong-zhi-yi-ji-duo-dian-hong-kong/">
+        </link>
+        <updated>2021-12-27T07:42:47.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="场景1实现一个简单的photoview相关功能包括双击放大放大拖动双指缩放">场景1：实现一个简单的PhotoView，相关功能包括，双击放大，放大拖动，双指缩放</h2>
+<h3 id="功能分析">功能分析：</h3>
+<p>1.双击放大，放大拖动：<br>
+官方提供了GestureDetector来进行手势相关的处理：</p>
+<pre><code class="language-java">/**
+这里使用SimpleOnGestureListener，SimpleOnGestureListener实现了OnDoubleTapListener接口，这里就有我们需要使用的双击实现的回掉
+*/
+val gestureDetector = GestureDetector(context, gestureDetectorListener)
+
+ /**
+     * 手势处理类
+     */
+    val gestureDetectorListener = object : GestureDetector.SimpleOnGestureListener() {
+
+        /**
+         * 一个事件的开始是从down开始的，如果down没有获取到
+         * 那么后续的事件也不会再消费，所以这里为了实现双击的效果，需要消费事件
+         */
+        override fun onDown(e: MotionEvent?): Boolean {
+            return true
+        }
+
+        /**
+         * 显示水波纹
+         */
+        override fun onShowPress(e: MotionEvent?) {
+            super.onShowPress(e)
+        }
+
+        /**
+         * 单击事件的，up事件时回掉
+         */
+        override fun onSingleTapUp(e: MotionEvent?): Boolean {
+            return super.onSingleTapUp(e)
+        }
+
+        /**
+         * 滑动是进行图像移动
+         */
+        override fun onScroll(
+            e1: MotionEvent?,
+            e2: MotionEvent?,
+            distanceX: Float,
+            distanceY: Float
+        ): Boolean {
+         return super.onScroll(e1, e2, distanceX, distanceY)
+        }
+
+        /**
+         * 长按
+         */
+        override fun onLongPress(e: MotionEvent?) {
+            super.onLongPress(e)
+        }
+
+        /**
+         * 惯性滑动，在惯性滑动的情况下实现一个回弹的效果
+         */
+        override fun onFling(
+            e1: MotionEvent?,
+            e2: MotionEvent?,
+            velocityX: Float,
+            velocityY: Float
+        ): Boolean {
+            return super.onFling(e1, e2, velocityX, velocityY)
+        }
+
+        /**
+         * 点击在up以及Tag时会触发回掉
+         */
+        override fun onSingleTapConfirmed(e: MotionEvent?): Boolean {
+            return super.onSingleTapConfirmed(e)
+        }
+
+        /**
+         * 双击事件的的Event回掉，包括有down，move，up
+         */
+        override fun onDoubleTapEvent(e: MotionEvent?): Boolean {
+            return super.onDoubleTapEvent(e)
+
+        }
+
+        override fun onContextClick(e: MotionEvent?): Boolean {
+            return super.onContextClick(e)
+        }
+
+        /**
+         * 双击事件的第二次down事件会进行回掉
+         */
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+             return super.onDoubleTap(e)
+        }
+    }
+</code></pre>
+<p>根据相关的注释，我们可以在onDoubleTap处理双击所发的处理，onScroll来进行滑动的处理并且可以在onFling中处理滑动的惯性处理，具体的业务处理看下面的完整代码。<br>
+2.双指缩放：<br>
+缩放手势处理类：ScaleGestureDetector</p>
+<pre><code class="language-java">scaleGestureDetector = ScaleGestureDetector(context, PhotoScaleGestureListener())
+
+ /**
+     * 手势发生时接收通知的监听器。 如果你想监听所有不同的手势，那么实现这个接口。 如果您只想侦听子集，
+     * 扩展ScaleGestureDetector.SimpleOnScaleGestureListener可能会更容易。 应用程序将按以下顺序接收事件：
+    一个onScaleBegin(ScaleGestureDetector)
+    零个或多个onScale(ScaleGestureDetector)
+    一个onScaleEnd(ScaleGestureDetector)
+     */
+    inner class PhotoScaleGestureListener : ScaleGestureDetector.OnScaleGestureListener {
+        /**
+         * 响应正在进行的手势的缩放事件。 通过指针运动报告
+         * @param
+         * @return 检测器是否应将此事件视为已处理。 如果事件未被处理，探测器将继续累积运动，直到事件被处理。 例如，如果应用程序只想在更改大于 0.01 时更新缩放因子，这会很有用。
+         */
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            return false
+        }
+
+        /**
+         * @return 检测器是否应继续识别此手势。 例如，如果手势开始于有意义的区域之外的焦点，则 onScaleBegin() 可能会返回 false 以忽略手势的其余部分
+         */
+        override fun onScaleBegin(detector: ScaleGestureDetector?): Boolean {
+            return true
+        }
+
+        /**
+         * 手势缩放结束时，处理边界问题
+         */
+        override fun onScaleEnd(detector: ScaleGestureDetector?) {
+        }
+    }
+</code></pre>
+<p>当我们构建好这两个手势处理类后就可以去接管View的Touch事件</p>
+<pre><code class="language-java">  override fun onTouchEvent(event: MotionEvent?): Boolean {
+      //首先先处理的是双指缩放，因为如果先处理双击和滑动的话，双指就永远没有机会触发了
+        var result = scaleGestureDetector.onTouchEvent(event)
+        if (!scaleGestureDetector.isInProgress) {
+            result = gestureDetector.onTouchEvent(event)
+        }
+        return result
+    }
+</code></pre>
+<h3 id="完整的代码">完整的代码：</h3>
+<p>整个构建涉及到的知识点包括：自定义view，手势控制，属性动画，</p>
+<pre><code class="language-java">package com.arms.flowview.photoView
+
+import android.animation.ObjectAnimator
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.util.AttributeSet
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
+import android.view.View
+import android.widget.OverScroller
+import com.arms.flowview.R
+import com.arms.flowview.ext.logE
+import com.arms.flowview.utils.ConverUtils
+import com.arms.flowview.utils.ImageUtils
+
+/**
+ *    author : heyueyang
+ *    time   : 2021/12/21
+ *    desc   :还有两地需要优化，处理最开始图片加载的问，最开始图片加载的大小不对，图片资源的获取现在是直接构建死的本地图片路径，这里如果要支持url的话要怎么处理
+ *    version: 1.0
+ */
+class PhotoView : View {
+
+
+    private lateinit var bitmap: Bitmap
+    private val mPaint = Paint()
+
+    /**
+     * 图像最初始时的x和y的坐标
+     */
+    var originalOffsetX = 0f
+    var originalOffsetY = 0f
+
+    //图像的偏移坐标
+    private var offSetX = 0f
+    private var offSetY = 0f
+
+    /**
+     * 放大的比例
+     */
+    private val OVER_SCALE_FACTOR = 1.5f
+
+    //当前的缩放比例
+    private var currentScale = 0f
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    //最小的缩放比例
+    private var smallScale = 0f
+
+    //最大的缩放比例
+    private var bigScale = 0f
+
+    //记录当前的状态是不是已经是放大
+    private var isEnlarge = false
+
+    /**
+     * 使用提供的MotionEvent检测各种手势和事件。 GestureDetector.OnGestureListener回调将在发生特定运动事件时通知用户。 此类应仅与通过触摸报告的MotionEvent一起使用（不要用于轨迹球事件）。 要使用这个类：
+    为您的View创建一个GestureDetector实例
+    在View.onTouchEvent(MotionEvent)方法中，确保您调用onTouchEvent(MotionEvent) 。 回调中定义的方法将在事件发生时执行。
+    如果监听GestureDetector.OnContextClickListener.onContextClick(MotionEvent)你必须在View.onGenericMotionEvent(MotionEvent)onGenericMotionEvent(MotionEvent)
+    中调用onGenericMotionEvent(MotionEvent) View.onGenericMotionEvent(MotionEvent) 。
+     */
+    private lateinit var gestureDetector: GestureDetector
+
+    /**
+     * 此类封装了滚动，并具有超出滚动操作边界的能力。 在大多数情况下，此类是Scroller替代品
+     */
+    private lateinit var overScroller: OverScroller
+
+    private lateinit var scaleGestureDetector: ScaleGestureDetector
+
+    constructor(context: Context?) : super(context) {
+        init(context)
+    }
+
+    constructor(context: Context?, attrs: AttributeSet?) : super(context, attrs) {
+        init(context)
+    }
+
+    constructor(context: Context?, attrs: AttributeSet?, defStyleAttr: Int) : super(
+        context,
+        attrs,
+        defStyleAttr
+    ) {
+        init(context)
+    }
+
+    private fun init(context: Context?) {
+        //获取bitmap
+        bitmap =
+            ImageUtils.instant.getBitmapBySize(context!!, R.drawable.test, ConverUtils.dp2px(300f))
+        //注册手势监听类
+        gestureDetector = GestureDetector(context, gestureDetectorListener)
+        //为了实现在滑动到边缘的回弹效果
+        overScroller = OverScroller(context)
+        //缩放操作
+        scaleGestureDetector = ScaleGestureDetector(context, PhotoScaleGestureListener())
+    }
+    /**
+    绘制这里其实一直都是以原始的x，y进行绘制的，不过是在发生变化的时候，偏移画布（将需要的内容展示到屏幕上）和缩放大画布（原本需要1像素，现在需要2个或者更多来展示）
+    */
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        //currentScale当前的比例是不断变化的，这样计算获取到当前需要变化的比例，例如最开始的适合currentScale = smallScale，那么scaleFaction = 0，translate的操作就是（0，0）不需要偏移
+        val scaleFaction = (currentScale - smallScale) / (bigScale - smallScale)
+        //画布偏移
+        canvas.translate(offSetX * scaleFaction, offSetY * scaleFaction)
+        //根据比例以控件中心为轴心进行缩放
+        canvas.scale(currentScale, currentScale, width / 2f, height / 2f)
+        //绘制图像
+        canvas.drawBitmap(bitmap, originalOffsetX, originalOffsetY, mPaint)
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        originalOffsetX = (width - bitmap.width) / 2f
+        originalOffsetY = (height - bitmap.height) / 2f
+        //放大的比例，最大的放大比例取宽高中小的那个，因为它的比例大
+        if ((bitmap.width / bitmap.height) &gt; width / height) {
+            //说明是宽大于高的
+            smallScale = (width / bitmap.width).toFloat()
+            bigScale = (height / bitmap.height).toFloat() * OVER_SCALE_FACTOR
+        } else {
+            smallScale = (height / bitmap.height).toFloat()
+            bigScale = (width / bitmap.width).toFloat() * OVER_SCALE_FACTOR
+        }
+        currentScale = smallScale
+    }
+
+    override fun onTouchEvent(event: MotionEvent?): Boolean {
+        var result = scaleGestureDetector.onTouchEvent(event)
+        if (!scaleGestureDetector.isInProgress) {
+            result = gestureDetector.onTouchEvent(event)
+        }
+        return result
+    }
+
+    private var scaleAnimator: ObjectAnimator? = null
+
+    private fun getScaleAnimation(smallScale: Float, bigScale: Float): ObjectAnimator {
+        if (scaleAnimator == null) {
+            //缩放处理的为currentScale这个属性，范围为smallScale到bigScale
+            scaleAnimator = ObjectAnimator.ofFloat(this, &quot;currentScale&quot;, 0f)
+        }
+        scaleAnimator!!.setFloatValues(smallScale, bigScale)
+        return scaleAnimator!!
+    }
+
+    /**
+     * 控制边界范围
+     */
+    private fun fixOffsets() {
+        //x轴的偏移必须在一个范围之内，这个范围的最大值是大图的最大宽度-控件宽度的一半，这里是在图像的右边，而在左边是的是负值的范围，y轴类似
+        offSetX = Math.min(offSetX, (bitmap.width * bigScale - width) / 2f)
+        offSetX = Math.max(offSetX, -(bitmap.width * bigScale - width) / 2f)
+        offSetY = Math.min(offSetY, (bitmap.height * bigScale - height) / 2f)
+        offSetY = Math.max(offSetY, -(bitmap.height * bigScale - height) / 2f)
+    }
+
+
+    /**
+     * 手势处理类
+     */
+    val gestureDetectorListener = object : GestureDetector.SimpleOnGestureListener() {
+
+        /**
+         * 一个事件的开始是从down开始的，如果down没有获取到
+         * 那么后续的事件也不会再消费，所以这里为了实现双击的效果，需要消费事件
+         */
+        override fun onDown(e: MotionEvent?): Boolean {
+            return true
+        }
+
+        /**
+         * 显示水波纹
+         */
+        override fun onShowPress(e: MotionEvent?) {
+            super.onShowPress(e)
+        }
+
+        /**
+         * 单击事件的，up事件时回掉
+         */
+        override fun onSingleTapUp(e: MotionEvent?): Boolean {
+            return super.onSingleTapUp(e)
+        }
+
+        /**
+         * 滑动是进行图像移动
+         */
+        override fun onScroll(
+            e1: MotionEvent?,
+            e2: MotionEvent?,
+            distanceX: Float,
+            distanceY: Float
+        ): Boolean {
+            //只在大图的情况下进行触发
+            if (isEnlarge) {
+                offSetX -= distanceX
+                offSetY -= distanceY
+                fixOffsets()
+                invalidate()
+            }
+            return super.onScroll(e1, e2, distanceX, distanceY)
+        }
+
+        /**
+         * 长按
+         */
+        override fun onLongPress(e: MotionEvent?) {
+            super.onLongPress(e)
+        }
+
+        /**
+         * 惯性滑动，在惯性滑动的情况下实现一个回弹的效果
+         */
+        override fun onFling(
+            e1: MotionEvent?,
+            e2: MotionEvent?,
+            velocityX: Float,
+            velocityY: Float
+        ): Boolean {
+            if (isEnlarge) {
+                //overX – 超出范围。 如果 &gt; 0，则可以在任一方向进行水平翻转。
+                //overY – 超出范围。 如果 &gt; 0，则可以在任一方向进行垂直翻转
+                overScroller.fling(
+                    offSetX.toInt(), offSetY.toInt(), velocityX.toInt(), velocityY.toInt(),
+                    (-(bitmap.width * bigScale - width) / 2).toInt(),
+                    ((bitmap.width * bigScale - width) / 2).toInt(),
+                    (-(bitmap.height * bigScale - height) / 2).toInt(),
+                    ((bitmap.height * bigScale - height) / 2).toInt(), 300, 300
+                )
+                postOnAnimation(FlishRunner())
+            }
+            return super.onFling(e1, e2, velocityX, velocityY)
+        }
+
+        /**
+         * 点击在up以及Tag时会触发回掉
+         */
+        override fun onSingleTapConfirmed(e: MotionEvent?): Boolean {
+            return super.onSingleTapConfirmed(e)
+        }
+
+        /**
+         * 双击事件的的Event回掉，包括有down，move，up
+         */
+        override fun onDoubleTapEvent(e: MotionEvent?): Boolean {
+            return super.onDoubleTapEvent(e)
+        }
+
+        override fun onContextClick(e: MotionEvent?): Boolean {
+            return super.onContextClick(e)
+        }
+
+        /**
+         * 双击事件的第二次down事件会进行回掉
+         */
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+            isEnlarge = !isEnlarge
+            if (isEnlarge) {
+                //实现的效果是点击是点击什么地方放大什么地方，所以需要对坐标进行偏移处理
+                offSetX = (e.x - width / 2) - (e.x - width / 2) * bigScale / smallScale
+                offSetY = (e.y - height / 2) - (e.y - height / 2) * bigScale / smallScale
+                fixOffsets()
+                //通过动画来进行缩放处理
+                getScaleAnimation(smallScale, bigScale).start()
+            } else {
+                //动画反转
+                val tempScale = Math.min(currentScale, bigScale)
+                getScaleAnimation(smallScale, tempScale).reverse()
+            }
+            return super.onDoubleTap(e)
+        }
+    }
+
+    inner class FlishRunner : Runnable {
+        override fun run() {
+            //computeScrollOffset为true，说明动画还没结束
+            if (overScroller.computeScrollOffset()) {
+                //currX获取的是当原点和现在位置的绝对距离，也就是我们需要的偏移量，因为需要回弹处理，这里不需要处理边界问题
+                offSetX = overScroller.currX.toFloat()
+                offSetY = overScroller.currY.toFloat()
+                invalidate()
+                postOnAnimation(this)
+            }
+        }
+    }
+
+    /**
+     * 手势发生时接收通知的监听器。 如果你想监听所有不同的手势，那么实现这个接口。 如果您只想侦听子集，
+     * 扩展ScaleGestureDetector.SimpleOnScaleGestureListener可能会更容易。 应用程序将按以下顺序接收事件：
+    一个onScaleBegin(ScaleGestureDetector)
+    零个或多个onScale(ScaleGestureDetector)
+    一个onScaleEnd(ScaleGestureDetector)
+     */
+    inner class PhotoScaleGestureListener : ScaleGestureDetector.OnScaleGestureListener {
+
+        var initScale = 0f;
+
+        /**
+         * 响应正在进行的手势的缩放事件。 通过指针运动报告
+         * @param
+         * @return 检测器是否应将此事件视为已处理。 如果事件未被处理，探测器将继续累积运动，直到事件被处理。 例如，如果应用程序只想在更改大于 0.01 时更新缩放因子，这会很有用。
+         */
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            currentScale = initScale * detector.scaleFactor
+            isEnlarge = currentScale &gt; smallScale
+            invalidate()
+            return false
+        }
+
+        /**
+         * @return 检测器是否应继续识别此手势。 例如，如果手势开始于有意义的区域之外的焦点，则 onScaleBegin() 可能会返回 false 以忽略手势的其余部分
+         */
+        override fun onScaleBegin(detector: ScaleGestureDetector?): Boolean {
+            //这是缩放比例不都是从零开始的
+            initScale = currentScale
+            return true
+        }
+
+        /**
+         * 手势缩放结束时，处理边界问题，可以在双指时展示更大或更小，但当结束时恢复到边界范围
+         */
+        override fun onScaleEnd(detector: ScaleGestureDetector?) {
+            if (currentScale &gt; bigScale) {
+                getScaleAnimation(bigScale, currentScale).reverse()
+            } else if (currentScale &lt; smallScale) {
+                getScaleAnimation(currentScale, smallScale).start()
+            }
+        }
+    }
+}
+</code></pre>
+<p>预留未完成：<br>
+1.加载的图片比例需要计算，现在是固定为300dp<br>
+2.图片的加载功能没有</p>
+<hr>
+<h2 id="场景2多点触控">场景2：多点触控</h2>
+<p>在Android上是支持多点触控的，注意的点就是需要是使用getActionMasked，原来的getAction只能获取到index为0的手指事件，这里需要注意的时事件的触发时机，并且所有的手指的Even都是通过一个数组进行存储的，当抬起时从数组中移除这个，但是当有新的手指落下时，会先分配到之前抬起的index上。</p>
+<pre><code class="language-java">package com.arms.flowview.photoView
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.util.AttributeSet
+import android.view.MotionEvent
+import android.view.View
+import com.arms.flowview.R
+import com.arms.flowview.utils.ConverUtils
+import com.arms.flowview.utils.ImageUtils
+import com.orhanobut.logger.Logger
+
+/**
+ *    author : heyueyang
+ *    time   : 2021/12/27
+ *    desc   :
+ *    version: 1.0
+ */
+class MultiPointView : View {
+
+    private lateinit var bitmap: Bitmap
+    private lateinit var paint: Paint
+
+    // 手指滑动偏移值
+    private var offsetX = 0f
+    private var offsetY = 0f
+
+    // 按下时的x,y坐标
+    private var downX = 0f
+    private var downY = 0f
+
+    // 上一次的偏移值
+    private var lastOffsetX = 0f
+    private var lastOffsetY = 0f
+
+    // 当前按下的pointId
+    private var currentPointId = 0
+
+    constructor(context: Context?) : super(context)
+    constructor(context: Context?, attrs: AttributeSet?) : super(context, attrs)
+    constructor(context: Context?, attrs: AttributeSet?, defStyleAttr: Int) : super(
+        context,
+        attrs,
+        defStyleAttr
+    )
+
+    init {
+        init(context)
+    }
+
+    private fun init(context: Context?) {
+        bitmap =
+            ImageUtils.instant.getBitmapBySize(context!!, R.drawable.dm1, ConverUtils.dp2px(300f))
+        paint = Paint().apply {
+            isAntiAlias = true
+        }
+    }
+
+    override fun draw(canvas: Canvas) {
+        super.draw(canvas)
+        canvas.drawBitmap(bitmap, offsetX, offsetY, paint)
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        //要想处理多指必须使用actionMasked
+        when (event.actionMasked) {
+            //DOWN只会在第一根手指落下时触发
+            MotionEvent.ACTION_DOWN -&gt; {
+                downX = event.x
+                downY = event.y
+
+                lastOffsetX = offsetX
+                lastOffsetY = offsetY
+                currentPointId = 0
+            }
+            MotionEvent.ACTION_MOVE -&gt; {
+                //通过id获取当前的下标,这里实现的效果是，在前一根手指
+                val index = event.findPointerIndex(currentPointId)
+
+                offsetX = lastOffsetX + event.getX(index) - downX
+                offsetY = lastOffsetY + event.getY(index) - downY
+                invalidate()
+            }
+            MotionEvent.ACTION_POINTER_DOWN -&gt; {
+                //多指操作的情况下，从第二个手指落下时会触发
+                //获取当前的落下的下标
+                val actionIndex = event.actionIndex
+                Logger.e(&quot;actionIndex:${actionIndex}&quot;)
+                //通过下标获取对应的手指ID，
+                currentPointId = event.getPointerId(actionIndex)
+                downX = event.getX(actionIndex)
+                downY = event.getY(actionIndex)
+                lastOffsetX = offsetX
+                lastOffsetY = offsetY
+            }
+            MotionEvent.ACTION_POINTER_UP -&gt; {
+                //非最后一根手指抬起时触发
+                var upIndex = event.actionIndex
+                val pointId = event.getPointerId(upIndex)
+                //值处理当前正在相应事件的手指
+                if (pointId == currentPointId) {
+                    //在手指抬起后获取下一个相应的下标
+                    val nextLastIndex =
+                        if (upIndex == event.pointerCount - 1) {
+                            event.pointerCount - 2
+                        } else {
+                            upIndex++
+                        }
+                    currentPointId = event.getPointerId(nextLastIndex)
+
+                    downX = event.getX(nextLastIndex)
+                    downY = event.getY(nextLastIndex)
+                    lastOffsetX = offsetX
+                    lastOffsetY = offsetY
+                }
+            }
+            //最后一根手指抬起时触发
+            MotionEvent.ACTION_UP-&gt;{
+
+            }
+        }
+        return true
+    }
+
+}
+</code></pre>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Fragment嵌套Fragment通过ViewModel进行数据同步的操作]]></title>
+        <id>https://arms-merchants.github.io/post/fragment-qian-tao-fragment-tong-guo-viewmodel-jin-xing-shu-ju-tong-bu-de-cao-zuo/</id>
+        <link href="https://arms-merchants.github.io/post/fragment-qian-tao-fragment-tong-guo-viewmodel-jin-xing-shu-ju-tong-bu-de-cao-zuo/">
+        </link>
+        <updated>2021-12-27T06:14:34.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="一个场景加上源码的分析">一个场景加上源码的分析</h2>
+<h3 id="1场景">1.场景</h3>
+<p>一个常见的场景，Fragment中有一个TabView和一个ViewPager构成的界面，Tab上展示ViewPager中Rv的某个数量（例如消息，未读的消息数量），消息的数量接口是在外层的Fragment中请求的，但是当我们在内层的Fragment中点击消息条目时需要修改这个数量，以往的做法是通过事件总线发个通知然后更新等等操作。现在我们既然使用有ViewModel，那个在让内层的Fragment获取外层的ViewModel，然后修改数量后postValue就可以，但是实际的效果和预想不相符，并没有引起数据的刷新。</p>
+<h3 id="2代码分析">2.代码分析</h3>
+<p>修改之前的代码：</p>
+<pre><code class="language-java">    private fun handleMessageRead(index: Int) {
+        mAdapter?.getItem(index)?.isRead = AppConstant.YES
+        mAdapter?.notifyItemChanged(index)
+        if (mModel?.type == StatusConfigs.MessageStatus.MESSAGE) {
+            if (parentFragmentModel == null) {
+                parentFragmentModel = getFragmentViewModel(MessageModel::class.java)
+            }
+            val value = parentFragmentModel!!.unReadCount.value
+            //在这里获取到value是null
+            value?.apply {
+                this.unreadCount -= 1
+                parentFragmentModel?.unReadCount?.postValue(this)
+            }
+        }
+    }
+</code></pre>
+<p>获取到的value是null，不应该啊，网络请求应该是已经给赋值了。最终看了一下两个parentFragmentModel，发现在两个fragment中获取到的是两个不同的对象。<br>
+修改后台的代码:</p>
+<pre><code class="language-java">    private fun handleMessageRead(index: Int) {
+        if (mAdapter?.getItem(index)?.isRead == AppConstant.NO) {
+            mAdapter?.getItem(index)?.isRead = AppConstant.YES
+            mAdapter?.notifyItemChanged(index)
+            if (mModel?.type == StatusConfigs.MessageStatus.MESSAGE) {
+                if (parentFragmentModel == null) {
+                    parentFragmentModel = ViewModelProvider(
+                        requireActivity(),
+                        ViewModelProvider.NewInstanceFactory()
+                    ).get(MessageModel::class.java)
+                }
+                val value = parentFragmentModel!!.unReadCount.value
+                value?.apply {
+                    value.unreadCount -=1
+                    parentFragmentModel?.unReadCount?.postValue(this)
+                }
+            }
+        }
+    }
+</code></pre>
+<p>这两个区别就是getFragmentViewModel(MessageModel::class.java)是封装在Base里的一个方法来获取对应的ViewModel：</p>
+<pre><code class="language-java">    protected open fun &lt;T : ViewModel?&gt; getFragmentViewModel(modelClass: Class&lt;T&gt;): T {
+        if (mFragmentProvider == null) {
+            mFragmentProvider = ViewModelProvider(this)
+        }
+        return mFragmentProvider!!.get(modelClass)
+    }
+</code></pre>
+<p>两个不同就是在构建ViewModelProvider是一个传入的是当前的Fragment一个是activity，那么它们为什么会引起不一样的结果？</p>
+<h3 id="3源码分析">3.源码分析</h3>
+<pre><code class="language-java">   public ViewModelProvider(@NonNull ViewModelStoreOwner owner, @NonNull Factory factory) {
+        this(owner.getViewModelStore(), factory);
+    }
+</code></pre>
+<p>这里的owner就是我们传入的activity或者fragment，分别看一下它们的getViewModelStore的实现：<br>
+activity：</p>
+<pre><code class="language-java">    @NonNull
+    @Override
+    public ViewModelStore getViewModelStore() {
+        if (getApplication() == null) {
+            throw new IllegalStateException(&quot;Your activity is not yet attached to the &quot;
+                    + &quot;Application instance. You can't request ViewModel before onCreate call.&quot;);
+        }
+        if (mViewModelStore == null) {
+            NonConfigurationInstances nc =
+                    (NonConfigurationInstances) getLastNonConfigurationInstance();
+            if (nc != null) {
+                // Restore the ViewModelStore from NonConfigurationInstances
+                mViewModelStore = nc.viewModelStore;
+            }
+            if (mViewModelStore == null) {
+                mViewModelStore = new ViewModelStore();
+            }
+        }
+        return mViewModelStore;
+    }
+</code></pre>
+<p>fragment:</p>
+<pre><code class="language-java">    @NonNull
+    ViewModelStore getViewModelStore(@NonNull Fragment f) {
+        ViewModelStore viewModelStore = mViewModelStores.get(f.mWho);
+        if (viewModelStore == null) {
+            viewModelStore = new ViewModelStore();
+            mViewModelStores.put(f.mWho, viewModelStore);
+        }
+        return viewModelStore;
+    }
+</code></pre>
+<p>两者的差别不大，都是如果当前为null的话构建一个ViewModelStore返回，如果有的话直接返回，所以这个ViewModelStore是跟随不同的Fragment和Activity生命周期的，并且所属对象是不同的。<br>
+接下来我们再看一下获取ViewModel的get方法：</p>
+<pre><code class="language-java">   @NonNull
+    @MainThread
+    public &lt;T extends ViewModel&gt; T get(@NonNull Class&lt;T&gt; modelClass) {
+        String canonicalName = modelClass.getCanonicalName();
+        if (canonicalName == null) {
+            throw new IllegalArgumentException(&quot;Local and anonymous classes can not be ViewModels&quot;);
+        }
+        return get(DEFAULT_KEY + &quot;:&quot; + canonicalName, modelClass);
+    }
+
+   @NonNull
+    @MainThread
+    public &lt;T extends ViewModel&gt; T get(@NonNull String key, @NonNull Class&lt;T&gt; modelClass) {
+        //通过key在ViewModelStore中查找对应的ViewModel
+        ViewModel viewModel = mViewModelStore.get(key);
+        //判断获取到的viewModel是不是modelClass的实例对象，如果是的话返回当前的viewModel
+        if (modelClass.isInstance(viewModel)) {
+            if (mFactory instanceof OnRequeryFactory) {
+                ((OnRequeryFactory) mFactory).onRequery(viewModel);
+            }
+            return (T) viewModel;
+        } else {
+            //noinspection StatementWithEmptyBody
+            if (viewModel != null) {
+                // TODO: log a warning.
+            }
+        }
+        //执行到这说明对应的ViewModel没有找到，那么根据工厂不同来生成ViewModel
+        if (mFactory instanceof KeyedFactory) {
+            viewModel = ((KeyedFactory) (mFactory)).create(key, modelClass);
+        } else {
+            viewModel = (mFactory).create(modelClass);
+        }
+        //存储以及返回对应的viewModel
+        mViewModelStore.put(key, viewModel);
+        return (T) viewModel;
+    }
+</code></pre>
+<p>到这里我们也就能分析明白为什么在Fragment中传入this和activity的结果不同的原因了，这是因为生成的ViewModel所属的作用域是不同的，this的话只在当前的Fragment中生效，那么FragmentA和FragmentB分别去创建ViewModel它们是不同的，而如果传入的Activity，那么这个ViewModel的作用域是Activity级别的，所有依附于当前Activity中的Fragment通过activity这个owner获取同一个class的ViewModel都会是同一个。</p>
+]]></content>
+    </entry>
     <entry>
         <title type="html"><![CDATA[Motion动画]]></title>
         <id>https://arms-merchants.github.io/post/motion-dong-hua/</id>
@@ -3349,306 +4114,6 @@ public class SkinManager extends Observable {
 <hr>
 <p>一个单独要注意的问题，因为LayoutInflater的限定是只能有一个Factory，所以这里一个背景库给到的解决方案是获取已经设置过的Factory来进行view的创建<br>
 <a href="https://github.com/JavaNoober/BackgroundLibrary">GitHub - JavaNoober/BackgroundLibrary: A framework for directly generating shape through Tags, no need to write shape.xml again（通过标签直接生成shape，无需再写shape.xml）</a></p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Android虚拟机和类加载机制]]></title>
-        <id>https://arms-merchants.github.io/post/android-xu-ni-ji-he-lei-jia-zai-ji-zhi/</id>
-        <link href="https://arms-merchants.github.io/post/android-xu-ni-ji-he-lei-jia-zai-ji-zhi/">
-        </link>
-        <updated>2021-08-10T01:32:47.000Z</updated>
-        <content type="html"><![CDATA[<h3 id="jvm和dalvik">JVM和Dalvik</h3>
-<p>Dalvik是基于寄存器的，寄存器是cpu的组成部分，是有限存贮容量的高速存贮部件，它们可用来暂存指令、数据和位址。<br>
-Android源码下载地址：https://source.android.google.cn<br>
-基于寄存器的虚拟机和基于栈的虚拟机的区别？<br>
-基于栈的虚拟机，是每个线程都有单独的栈，方法的执行都是基于操作数栈来实现的，每执行一个方法都会在操作数栈中压入一个新的栈帧，在栈顶的栈帧叫做当前栈帧，一个栈帧包含的（局部变量表、操作数栈、动态连接、返回地址）<br>
-基于寄存器的虚拟机中是没有操作数栈的，但是有很多虚拟寄存器，这些寄存器在运行时栈中，本质上就是一个数组，在Dalvik VM中每个线程都有自己的PC（程序计数器）和调用栈，方法调用的活动记录以帧为单位保存在调用栈上。</p>
-<p>Android虚拟机的变化过程<br>
-在Android5.0以前使用DalvikVM，也就是解释执行，不过在Android2.2版本开始支持JIT即时编译，也就是在程序运行的过程中进行选择热点代码（经常执行的代码）进行编译或者优化<br>
-在Android5.0以后使用ART（Android Runtime）虚拟机执行的是本地机器码，也就是编译过之后的代码，这是在程序安装的时候进行的，所以这个时候应用的安装变慢了（需要进行编译），ART引入预先编译机制（Ahead Of Time）在安装时，ART使用设备自带的dex2oat工具来编译应用，dex中的字节码将被编译成本地机器码。<br>
-从AndroidN混合使用AOT编辑、解释和JIT，在安装应用时不进行任何AOT编译了，运行过程中解释执行，对经常执行的方法进行JIT，经过JIT编译的方法将会记录到Profile配置文件中。当设备闲置和充电时，编译守护进程会运行，根据Profile文件对常用代码进行AOT编译。</p>
-<h3 id="双亲委托机制">双亲委托机制</h3>
-<p><img src="file:///Users/heyueyang/Desktop/20200619165256983.png" alt="" loading="lazy"><br>
-ClassLoader 中的parent 是对象的父类 父类加载器</p>
-<p>ClassLoader的实现类中有一个BootClassLoader，这个是Framework层的类加载器，例如String，Activity等，但是像是所有第三方的dex的类加载器都是通过其他的加载器例如PathClassLoader来实现的，这个PathClassLoader是系统帮助我们创建的，它的构造方法会要求传入一个ClassLoader，然后赋值给parent这个值</p>
-<pre><code class="language-java">protected Class&lt;?&gt; loadClass(String name, boolean resolve)
-        throws ClassNotFoundException
-    {
-            //查找缓存是否已经被加载过了
-            Class&lt;?&gt; c = findLoadedClass(name);
-            if (c == null) {
-                try {
-                    if (parent != null) {
-                    //这里的parent就是BootClassLoader，它是对象的父类，不是类的父类
-                    //那这样的话就是framework先加载，如果没有再通过PathClassLoader去加载
-                        c = parent.loadClass(name, false);
-                    } else {
-                        c = findBootstrapClassOrNull(name);
-                    }
-                } catch (ClassNotFoundException e) {
-                    // ClassNotFoundException thrown if class not found
-                    // from the non-null parent class loader
-                }
-
-                if (c == null) {
-                    // If still not found, then invoke findClass in order
-                    // to find the class.
-                    c = findClass(name);
-                }
-            }
-            return c;
-    }
-</code></pre>
-<hr>
-<p>基于Android28的源码<br>
-补充一个PathClassLoader是在什么地方初始化的问题<br>
-程序都需要有一个main方法作为主入口的，Android的应用程序是在ActivityThread的main方法，可以看到最终在main方法里也是创建出了handle，不过暂时这块的代码没有找到调用的地方，在bandleBindApplication（）方法中构建处理上下文对象，其中ContextImpl中有方法getClassLoader()来获取ClassLoader，<br>
-ContextImp是在上一步ActivityThread中通过ContextImpl.createAppContext(this,data.info)创建的，this是指的主线程，data.info就是我们的PackInfo，然后通过构造方法创建出ContextImpl对象，那么获取ClassLoader就会走到PackInfo(LoadedApk)对象中的getClassLoader（）方法中，<br>
-上面的代码再分析，先直接看这段，</p>
-<pre><code class="language-java">  if (mClassLoader == null) {
-            // Temporarily disable logging of disk reads on the Looper thread
-            // as this is early and necessary.
-            StrictMode.ThreadPolicy oldPolicy = StrictMode.allowThreadDiskReads();
-
-            mClassLoader = ApplicationLoaders.getDefault().getClassLoader(zip,
-                    mApplicationInfo.targetSdkVersion, isBundledApp, librarySearchPath,
-                    libraryPermittedPath, mBaseClassLoader,
-                    mApplicationInfo.classLoaderName);
-            mAppComponentFactory = createAppFactory(mApplicationInfo, mClassLoader);
-
-            StrictMode.setThreadPolicy(oldPolicy);
-            // Setup the class loader paths for profiling.
-            needToSetupJitProfiles = true;
-        }
-
-</code></pre>
-<p>这个时候就会走到ApplicationLoaders中的getClassLoader()方法中，这里有一个ClassLoaderFactory.createClassLoader(),这里通过工厂模式来创建我们的ClassLoader，</p>
-<pre><code class="language-java">  public static ClassLoader createClassLoader(String dexPath,
-            String librarySearchPath, ClassLoader parent, String classloaderName) {
-        if (isPathClassLoaderName(classloaderName)) {
-            return new PathClassLoader(dexPath, librarySearchPath, parent);
-        } else if (isDelegateLastClassLoaderName(classloaderName)) {
-            return new DelegateLastClassLoader(dexPath, librarySearchPath, parent);
-        }
-
-        throw new AssertionError(&quot;Invalid classLoaderName: &quot; + classloaderName);
-    }
-</code></pre>
-<p>会返回两种类型的ClassLoader，在isPathClassLoaderName的判断中，如果传入的名称为null就会返回PathClassLoader，到这PathClassLoader初始化完成了，并关联到了上下文上。</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Android应用冷启动流程，以及view.post（）为什么能获取到view的宽高]]></title>
-        <id>https://arms-merchants.github.io/post/android-ying-yong-leng-qi-dong-liu-cheng-yi-ji-viewpostwei-shi-me-neng-huo-qu-dao-view-de-kuan-gao/</id>
-        <link href="https://arms-merchants.github.io/post/android-ying-yong-leng-qi-dong-liu-cheng-yi-ji-viewpostwei-shi-me-neng-huo-qu-dao-view-de-kuan-gao/">
-        </link>
-        <updated>2020-11-23T01:21:44.000Z</updated>
-        <content type="html"><![CDATA[<p><a href="https://juejin.cn/post/6895735092438630407">原文链接</a></p>
-<h2 id="1应用启动流程">1.应用启动流程</h2>
-<p>应用的冷启动流程-》首先要和zygote建立socket连接，将创建进程需要的参数发给zygote，zygote服务端收到参数之后调用ZygoteConnection.processOneCommand()处理参数，并fork出应用进程。最后通过findStaticMain（）找到ActivityThread类的main（）方法并执行，应用进程启动。</p>
-<p>ActivityThread不是一个线程类，但它运行在主线程，可以把它认为是主线程也没关系。在main（）中，创建ActivityThread对象，调用其attach（），并开启主线程消息循环，基于事件的消息队列机制开始工作了。</p>
-<p>在ActivityThread.attach()方法，Binder调用了AMS.attachApplication()，主要完成了两件事：</p>
-<ol>
-<li>
-<p>将当前进程进程和AMS进行绑定，然后Binder调用回应用进程的Application.bindApplication()方法，进行客户端的准备工作，创建Context，创建Application等等。</p>
-</li>
-<li>
-<p>mStackSupervisor.attachApplicationLocked(app),最终调用到realStartActivityLocked()启动Activity</p>
-</li>
-</ol>
-<p><a href="https://luyao.tech/archives/startactivity">Activity启动流程</a></p>
-<pre><code class="language-java">&gt; ActivityThread.java
-
-private Activity performLaunchActivity(ActivityClientRecord r, Intent customIntent) {
-    ...
-    // 获取 ComponentName
-    ComponentName component = r.intent.getComponent();
-    ...
-    // 创建 ContextImpl 对象
-    ContextImpl appContext = createBaseContextForActivity(r);
-    ...
-    // 反射创建 Activity 对象
-    activity = mInstrumentation.newActivity(cl, component.getClassName(), r.intent);
-    ......
-    // 创建 Application 对象
-    Application app = r.packageInfo.makeApplication(false, mInstrumentation);
-    ......      
-	// attach 方法中会创建 PhoneWindow 对象
-    activity.attach(appContext, this, getInstrumentation(), r.token,
-            r.ident, app, r.intent, r.activityInfo, title, r.parent,
-            r.embeddedID, r.lastNonConfigurationInstances, config,
-            r.referrer, r.voiceInteractor, window, r.configCallback);
-
-             
-    // 执行 onCreate()
-    if (r.isPersistable()) {
-        mInstrumentation.callActivityOnCreate(activity, r.state, r.persistentState);
-    } else {
-        mInstrumentation.callActivityOnCreate(activity, r.state);
-    }
-    ...
-    return activity;
-}
-</code></pre>
-<p>mInstrumentation.callActivityOnCreate方法最终会回调Activity.onCreat()方法。到这里setContentView()方法就被执行了。setContentView最终的结果就是创建DecorView，然后根据布局id解析xml，将得到的view塞进DecorView。到这一步我们只是得到了一个空壳子View树，它并没有被添加到屏幕上。<br>
-然后跳过onStart（）去看onResume（）</p>
-<p>Activity 的生命周期是由 ClientLifecycleManager 类来调度的，具体原理可以看这篇文章 <a href="https://luyao.tech/archives/activitylifecycle1#clienttransactionaddcallback">从源码看 Activity 生命周期</a> 。</p>
-<pre><code class="language-java">&gt; ActivityThread.java
-
-public void handleResumeActivity(IBinder token, boolean finalStateRequest, boolean isForward,
-       String reason) {
-   ...
-   // 1. 回调 onResume
-   final ActivityClientRecord r = performResumeActivity(token, finalStateRequest, reason);
-   ···
-   View decor = r.window.getDecorView();
-   decor.setVisibility(View.INVISIBLE);
-   ViewManager wm = a.getWindowManager();
-   WindowManager.LayoutParams l = r.window.getAttributes();
-   // 2. 添加 decorView 到 WindowManager
-   wm.addView(decor, l);
-   ...
-}
-
-</code></pre>
-<p>wm.addView(decor, l) 最终调用到 WindowManagerGlobal.addView() 。</p>
-<pre><code class="language-java">
-public void addView(View view, ViewGroup.LayoutParams params,
-       Display display, Window parentWindow) {
-   ...
-   // 1. 重点，初始化 ViewRootImpl
-   root = new ViewRootImpl(view.getContext(), display);
-   // 2. 重点，发起绘制并显示到屏幕上
-   root.setView(view, wparams, panelParentView);
-
-</code></pre>
-<pre><code class="language-java">public ViewRootImpl(Context context, Display display) {
-   ...
-   // 1. IWindowSession 代理对象，与 WMS 进行 Binder 通信
-   mWindowSession = WindowManagerGlobal.getWindowSession();
-   ...
-   // 2.
-   mWidth = -1;
-   mHeight = -1;
-   ...
-   // 3. 初始化 AttachInfo
-   // 记住 mAttachInfo 是在这里被初始化的
-   mAttachInfo = new View.AttachInfo(mWindowSession, mWindow, display, this, mHandler, this,
-           context);
-   ...
-   // 4. 初始化 Choreographer，通过 Threadlocal 存储
-   mChoreographer = Choreographer.getInstance();
-}
-
-</code></pre>
-<ol>
-<li>初始化 mWindowSession，它可以 WMS 进行 Binder 通信</li>
-<li>这里能看到宽高还未赋值</li>
-<li>初始化 AttachInfo，这里着重记一下，后面会再提到</li>
-<li>初始化 Choreographer，上篇文章 面试官：如何监测应用的 FPS ？ 详细介绍过</li>
-</ol>
-<pre><code class="language-java">
-&gt; ViewRootImpl.java
-
-// 参数 view 就是 DecorView
-public void setView(View view, WindowManager.LayoutParams attrs, View panelParentView) {
-   synchronized (this) {
-       if (mView == null) {
-           mView = view;
-
-           // 1. 发起首次绘制
-           requestLayout();
-
-           // 2. Binder 调用 Session.addToDisplay()，将 window 添加到屏幕
-                   res = mWindowSession.addToDisplay(mWindow, mSeq, mWindowAttributes,
-                           getHostVisibility(), mDisplay.getDisplayId(), mWinFrame,
-                           mAttachInfo.mContentInsets, mAttachInfo.mStableInsets,
-                           mAttachInfo.mOutsets, mAttachInfo.mDisplayCutout, mInputChannel);
-
-           // 3. 将 decorView 的 parent 赋值为 ViewRootImpl
-           view.assignParent(this);
-       }
-   }
-}
-</code></pre>
-<pre><code class="language-java">&gt; ViewRootImpl.java
-
-public void requestLayout() {
-    if (!mHandlingLayoutInLayoutRequest) {
-		// 检查线程
-        checkThread();
-        mLayoutRequested = true;
-        // 重点
-        scheduleTraversals();
-    }
-}
-
-</code></pre>
-<p>ViewRootImpl.scheduleTraversals() 方法在 上篇文章 中详细介绍过，这里大致总结一下：</p>
-<p>ViewRootImpl.scheduleTraversals() 方法中会建立同步屏障，优先处理异步消息。通过 Choreographer.postCallback() 方法提交了任务 mTraversalRunnable，这个任务就是负责 View 的测量，布局，绘制。<br>
-Choreographer.postCallback() 方法通过 DisplayEventReceiver.nativeScheduleVsync() 方法向系统底层注册了下一次 vsync 信号的监听。当下一次 vsync 来临时，系统会回调其 dispatchVsync() 方法，最终回调 FrameDisplayEventReceiver.onVsync() 方法。<br>
-FrameDisplayEventReceiver.onVsync() 方法中取出之前提交的 mTraversalRunnable 并执行。这样就完成了一次绘制流程。</p>
-<p>mTraversalRunnable 中执行的是 doTraversal() 方法。</p>
-<pre><code class="language-java">&gt; ViewRootImpl.java
-
-void doTraversal() {
-if (mTraversalScheduled) {
-    // 1. mTraversalScheduled 置为 false
-    mTraversalScheduled = false;
-    // 2. 移除同步屏障
-    mHandler.getLooper().getQueue().removeSyncBarrier(mTraversalBarrier);
-
-    // 3. 开始布局，测量，绘制流程
-    performTraversals();
-    ......
-}
-</code></pre>
-<pre><code class="language-java">&gt; ViewRootImpl.java
-
-private void performTraversals() {
-    ...
-    // 1. 绑定 Window，重点记忆一下
-    host.dispatchAttachedToWindow(mAttachInfo, 0);
-    mAttachInfo.mTreeObserver.dispatchOnWindowAttachedChange(true);
-
-    getRunQueue().executeActions(mAttachInfo.mHandler);
-
-    // 2. 请求 WMS 计算窗口大小
-    relayoutResult = relayoutWindow(params, viewVisibility, insetsPending);
-
-    // 3. 测量
-    performMeasure(childWidthMeasureSpec, childHeightMeasureSpec);
-
-    // 4. 布局
-    performLayout(lp, mWidth, mHeight);
-
-    // 5. 绘制
-    performDraw();
-}
-</code></pre>
-<p>到此整个布局的测量和绘制都结束，接下啦所以我们就可以明白为什么在activity中的onCreate以及onResume中为什么无法直接获取到view的宽高。</p>
-<h2 id="2viewpost">2.view.post()</h2>
-<pre><code class="language-java">&gt; View.java
-
-public boolean post(Runnable action) {
-  final AttachInfo attachInfo = mAttachInfo;
-  if (attachInfo != null) {
-      // 1. attachInfo 不为空，通过 mHandler 发送
-      return attachInfo.mHandler.post(action);
-  }
-  // 2. attachInfo 为空，放入队列中
-  getRunQueue().post(action);
-  return true;
-}
-
-</code></pre>
-<ol>
-<li>attachInfo 是在 ViewRootImpl 的构造函数中初始化的，</li>
-<li>ViewRootImpl 是在 WindowManagerGlobal.addView() 创建的</li>
-<li>WindowManagerGlobal.addView() 是在 ActivityThread 的 handleResumeActivity() 中调用的，但是是在 Activity.onResume() 回调之后</li>
-</ol>
-<p>根据 ViewRootImpl 是否已经创建，View.post() 会执行不同的逻辑。如果 ViewRootImpl 已经创建，即 mAttachInfo 已经初始化，直接通过 Handler 发送消息来执行任务。如果 ViewRootImpl 未创建，即 View 尚未开始绘制，会将任务保存为 HandlerAction，暂存在队列 HandlerActionQueue 中，等到 View 开始绘制，执行 performTraversal() 方法时，在 dispatchAttachedToWindow() 方法中通过 Handler 分发 HandlerActionQueue 中暂存的任务。<br>
-另外要注意，View 绘制是发生在一次 Meesage 处理过程中的，View.post() 执行的任务也是发生在一次 Message 处理过程中的，它们一定是有先后顺序的。</p>
 ]]></content>
     </entry>
 </feed>
