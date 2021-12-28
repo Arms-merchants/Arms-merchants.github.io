@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://arms-merchants.github.io/</id>
     <title>Arms-merchants</title>
-    <updated>2021-12-27T10:16:25.573Z</updated>
+    <updated>2021-12-28T01:54:34.833Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://arms-merchants.github.io/"/>
     <link rel="self" href="https://arms-merchants.github.io/atom.xml"/>
@@ -1073,9 +1073,9 @@ class DrawerContent @JvmOverloads constructor(
 
 &lt;/androidx.drawerlayout.widget.DrawerLayout&gt;
 </code></pre>
-<p>这样我们就实现了一个带有侧滑菜单并且主视图内容有缩放的效果。<br>
-###效果2<br>
-<img src="https://arms-merchants.github.io//post-images/1639986956494.gif" alt="" loading="lazy"><br>
+<p>这样我们就实现了一个带有侧滑菜单并且主视图内容有缩放的效果。</p>
+<h3 id="效果2">效果2</h3>
+<p><img src="https://arms-merchants.github.io//post-images/1639986956494.gif" alt="" loading="lazy"><br>
 先分析当前的动画效果，向右滑动时，整体右移，视图1移出屏幕，视图2宽度缩小移动到视图1的位置，<br>
 视图3放大移动到视图2的位置，屏幕外的视图4移动到屏幕内视图3的位置，向左滑动类似，左右滑动都需要处理反向已经在屏幕外的视图，所以视图的总数是5。<br>
 动画的Sence:</p>
@@ -1338,6 +1338,9 @@ class DrawerContent @JvmOverloads constructor(
 </code></pre>
 <p>在代码中count确定了总的数量，populate视图变化后的子view以及它的下标，onNewItem在firstView位置当前视图的下标。<br>
 Motion适合实现一些复杂的动画效果，不过因为是通过xml预先配置好的，所以并不适合一些动态视图的效果。</p>
+<hr>
+<p>参考链接：<br>
+<a href="https://mp.weixin.qq.com/s/8Oeebb2nsxnZTsQ6iv-rdw">MotionLayout 的高级玩法我学会了</a></p>
 ]]></content>
     </entry>
     <entry>
