@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://arms-merchants.github.io/</id>
     <title>Arms-merchants</title>
-    <updated>2021-12-28T01:54:34.833Z</updated>
+    <updated>2021-12-29T01:46:11.951Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://arms-merchants.github.io/"/>
     <link rel="self" href="https://arms-merchants.github.io/atom.xml"/>
@@ -633,6 +633,7 @@ class MultiPointView : View {
 
 }
 </code></pre>
+<h1 id="项目地址"><a href="https://github.com/Arms-merchants/Study/tree/main/UI/FlowView/app/src/main/java/com/arms/flowview/photoView">项目地址</a></h1>
 ]]></content>
     </entry>
     <entry>
@@ -1339,8 +1340,10 @@ class DrawerContent @JvmOverloads constructor(
 <p>在代码中count确定了总的数量，populate视图变化后的子view以及它的下标，onNewItem在firstView位置当前视图的下标。<br>
 Motion适合实现一些复杂的动画效果，不过因为是通过xml预先配置好的，所以并不适合一些动态视图的效果。</p>
 <hr>
-<p>参考链接：<br>
-<a href="https://mp.weixin.qq.com/s/8Oeebb2nsxnZTsQ6iv-rdw">MotionLayout 的高级玩法我学会了</a></p>
+<h1 id="参考链接">参考链接：</h1>
+<p><a href="https://mp.weixin.qq.com/s/8Oeebb2nsxnZTsQ6iv-rdw">MotionLayout 的高级玩法我学会了</a></p>
+<hr>
+<h1 id="完整项目地址"><a href="https://github.com/Arms-merchants/Study/tree/main/UI/FlowView/app/src/main/java/com/arms/flowview/motion">完整项目地址</a></h1>
 ]]></content>
     </entry>
     <entry>
@@ -1477,6 +1480,8 @@ class NestedScrollableHost : FrameLayout {
 <p>使用的话直接在内层的滑动布局外加一层NestedScrollableHost。</p>
 <h1 id="总结">总结</h1>
 <h2 id="相当于就是你不让我覆写那我写个中间层把你的事件拦截掉往下分发">相当于就是你不让我覆写，那我写个中间层把你的事件拦截掉往下分发。</h2>
+<hr>
+<h1 id="完整项目地址"><a href="https://github.com/Arms-merchants/Study/tree/main/UI/FlowView/app/src/main/java/com/arms/flowview/vp">完整项目地址</a></h1>
 ]]></content>
     </entry>
     <entry>
@@ -1706,7 +1711,7 @@ afterEvaluate {
 }*/
 
 /**
- * 查找apk文件
+ * 查找apk文件，上面的方法因为我们项目中使用了资源混淆的处理，会导致在内层还有一个apk文件，所以这里直接找第一层的，根据需要修改使用方法即可
  * @param apkFile
  * @return
  */
