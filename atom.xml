@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://arms-merchants.github.io/</id>
     <title>Arms-merchants</title>
-    <updated>2021-12-31T08:42:52.134Z</updated>
+    <updated>2021-12-31T08:45:23.417Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://arms-merchants.github.io/"/>
     <link rel="self" href="https://arms-merchants.github.io/atom.xml"/>
@@ -421,6 +421,7 @@ class TestActivity:AppCompatActivity() {
 }
 </code></pre>
 <p>就是在构建ViewModel时需要自己创建构建工厂，来实现参数的数值，在ViewModel创建时设置为自己创建的工厂。</p>
+<h1 id="2021再见今年的最后一篇文章了">2021再见，今年的最后一篇文章了。</h1>
 ]]></content>
     </entry>
     <entry>
