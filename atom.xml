@@ -2,14 +2,932 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://arms-merchants.github.io/</id>
     <title>Arms-merchants</title>
-    <updated>2021-12-31T08:45:23.417Z</updated>
+    <updated>2022-01-06T09:51:35.179Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://arms-merchants.github.io/"/>
     <link rel="self" href="https://arms-merchants.github.io/atom.xml"/>
     <subtitle>温故而知新</subtitle>
     <logo>https://arms-merchants.github.io/images/avatar.png</logo>
     <icon>https://arms-merchants.github.io/favicon.ico</icon>
-    <rights>All rights reserved 2021, Arms-merchants</rights>
+    <rights>All rights reserved 2022, Arms-merchants</rights>
+    <entry>
+        <title type="html"><![CDATA[Handler]]></title>
+        <id>https://arms-merchants.github.io/post/handle/</id>
+        <link href="https://arms-merchants.github.io/post/handle/">
+        </link>
+        <updated>2022-01-05T06:11:07.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="一些面试问题">一些面试问题：</h2>
+<ul>
+<li>1.一个线程有几个Handler？</li>
+<li>2.一个线程有几个looper，如何保证的？</li>
+<li>3.Handler内存泄漏原因？为什么其他的内部类没有说过这个问题？</li>
+<li>4.为何主线程可以new Handler？如果想要在子线程中new handler要做什么准备</li>
+<li>5.子线程中维护的Looper，消息队列无消息的时候处理方案是什么？有什么用？</li>
+<li>6.既然可以存在多个Handler往MessageQueue中添加数据（发消息时各个Handler可能处于不同线程），那它内部是如何保证线程安全的？</li>
+<li>7.我们使用Message时应该如何创建它？</li>
+<li>8.Looper死循环为什么不会导致应用卡死？</li>
+</ul>
+<hr>
+<p>首先了解Handle是用于线程间通讯的，是整个App中的通信框架。</p>
+<p>最常用的sendMessage的流程<br>
+handle.sendMessage() -&gt;messageQueue.enqueueMessage<br>
+looper.loop()-&gt;messageQueue.next()-&gt;handler.dispatchMessage()-&gt;handle.handleMessage()<br>
+其中会涉及到类包括MessageQueue和Looper。</p>
+<h2 id="1android启动主线程中的handler">1.Android启动主线程中的Handler</h2>
+<p>Handle发送消息到MessageQueue中，然后Looper进行一个死循环来从MessageQueue中取消息，特别是我们在子线程中使用Handle时，我们要自己去启动Looper，不然Handle根本不起作用。但是在Android的主线程中我们并没有手动去启动looper，那么它是怎么来的？<br>
+来看一下Android程序的主入口，ActivityThread.main()-&gt;</p>
+<pre><code class="language-java"> public static void main(String[] args) {
+        //省略部分代码
+        //这里启动了Looper
+        Looper.prepareMainLooper();
+
+        // Find the value for {@link #PROC_START_SEQ_IDENT} if provided on the command line.
+        // It will be in the format &quot;seq=114&quot;
+        long startSeq = 0;
+        if (args != null) {
+            for (int i = args.length - 1; i &gt;= 0; --i) {
+                if (args[i] != null &amp;&amp; args[i].startsWith(PROC_START_SEQ_IDENT)) {
+                    startSeq = Long.parseLong(
+                            args[i].substring(PROC_START_SEQ_IDENT.length()));
+                }
+            }
+        }
+        ActivityThread thread = new ActivityThread();
+        thread.attach(false, startSeq);
+        
+        if (sMainThreadHandler == null) {
+            sMainThreadHandler = thread.getHandler();
+        }
+
+        if (false) {
+            Looper.myLooper().setMessageLogging(new
+                    LogPrinter(Log.DEBUG, &quot;ActivityThread&quot;));
+        }
+
+        // End of event ActivityThreadMain.
+        Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+        //Looper中是一个轮询操作
+        Looper.loop();
+        //执行到这里说明主线程中的Looper意外退出了，那么程序也就挂掉了
+        throw new RuntimeException(&quot;Main thread loop unexpectedly exited&quot;);
+    }
+</code></pre>
+<p>Looper中相关的方法分析：</p>
+<pre><code class="language-java">    /**
+    构建主线程的Looper和MessageQueue
+    */
+    @Deprecated
+    public static void prepareMainLooper() {
+        //这里就是构建了一个不允许退出的Looper并放到了sThreadLocal（ThreadLocal）中
+        prepare(false);
+        synchronized (Looper.class) {
+            if (sMainLooper != null) {
+                throw new IllegalStateException(&quot;The main Looper has already been prepared.&quot;);
+            }
+            //主线程的Looper
+            sMainLooper = myLooper();
+        }
+    }
+    /**
+    quitAllowed是否允许退出
+    */
+     private static void prepare(boolean quitAllowed) {
+        if (sThreadLocal.get() != null) {
+            throw new RuntimeException(&quot;Only one Looper may be created per thread&quot;);
+        }
+        sThreadLocal.set(new Looper(quitAllowed));
+    }
+
+    /**
+    looper的轮询操作
+    */
+    public static void loop() {
+        //获取当前线程的Looper
+        final Looper me = myLooper();
+        //如果为空的话，说明Looper还没有创建
+        if (me == null) {
+            throw new RuntimeException(&quot;No Looper; Looper.prepare() wasn't called on this thread.&quot;);
+        }
+        if (me.mInLoop) {
+            Slog.w(TAG, &quot;Loop again would have the queued messages be executed&quot;
+                    + &quot; before this one completed.&quot;);
+        }
+
+        me.mInLoop = true;
+
+        // 确保该线程的身份是本地进程的身份，并跟踪该身份令牌实际上是什么。
+        Binder.clearCallingIdentity();
+        final long ident = Binder.clearCallingIdentity();
+
+        // 允许使用系统道具覆盖阈值。例如adb shell 'setprop log.looper.1000.main.slow 1 &amp;&amp; 停止 &amp;&amp; 开始'
+        final int thresholdOverride =
+                SystemProperties.getInt(&quot;log.looper.&quot;
+                        + Process.myUid() + &quot;.&quot;
+                        + Thread.currentThread().getName()
+                        + &quot;.slow&quot;, 0);
+
+        me.mSlowDeliveryDetected = false;
+
+        for (;;) {
+            //在当前Looper的MessageQueue中取Message
+            if (!loopOnce(me, ident, thresholdOverride)) {
+                return;
+            }
+        }
+    }
+</code></pre>
+<h2 id="2主线程的handler都处理了什么">2.主线程的Handler都处理了什么？</h2>
+<pre><code class="language-java">public void handleMessage(Message msg) {
+            if (DEBUG_MESSAGES) Slog.v(TAG, &quot;&gt;&gt;&gt; handling: &quot; + codeToString(msg.what));
+            switch (msg.what) {
+                //这个应该是初始化应用信息的,handleBindApplication中有设置应用的TargetVersion，时间格式（12或者24）等
+                case BIND_APPLICATION:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;bindApplication&quot;);
+                    AppBindData data = (AppBindData)msg.obj;
+                    handleBindApplication(data);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //处理应用退出，可以看到主线程的Looper调用了quit停止了
+                case EXIT_APPLICATION:
+                    if (mInitialApplication != null) {
+                        mInitialApplication.onTerminate();
+                    }
+                    Looper.myLooper().quit();
+                    break;
+                    //这里应该是处理广播接受
+                case RECEIVER:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;broadcastReceiveComp&quot;);
+                    handleReceiver((ReceiverData)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //创建服务
+                case CREATE_SERVICE:
+                    if (Trace.isTagEnabled(Trace.TRACE_TAG_ACTIVITY_MANAGER)) {
+                        Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER,
+                                (&quot;serviceCreate: &quot; + String.valueOf(msg.obj)));
+                    }
+                    handleCreateService((CreateServiceData)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //绑定服务
+                case BIND_SERVICE:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;serviceBind&quot;);
+                    handleBindService((BindServiceData)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //解绑服务
+                case UNBIND_SERVICE:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;serviceUnbind&quot;);
+                    handleUnbindService((BindServiceData)msg.obj);
+                    schedulePurgeIdler();
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //应该是启动服务
+                case SERVICE_ARGS:
+                    if (Trace.isTagEnabled(Trace.TRACE_TAG_ACTIVITY_MANAGER)) {
+                        Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER,
+                                (&quot;serviceStart: &quot; + String.valueOf(msg.obj)));
+                    }
+                    handleServiceArgs((ServiceArgsData)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //停止服务
+                case STOP_SERVICE:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;serviceStop&quot;);
+                    handleStopService((IBinder)msg.obj);
+                    schedulePurgeIdler();
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //配置信息发生变化（主题等）
+                case CONFIGURATION_CHANGED:
+                    mConfigurationController.handleConfigurationChanged((Configuration) msg.obj);
+                    break;
+                    //移除上下文，看内部代码实现应该是注销广播的接受者和服务的Connection
+                case CLEAN_UP_CONTEXT:
+                    ContextCleanupInfo cci = (ContextCleanupInfo)msg.obj;
+                    cci.context.performFinalCleanup(cci.who, cci.what);
+                    break;
+                    //空闲时调用GC
+                case GC_WHEN_IDLE:
+                    scheduleGcIdler();
+                    break;
+                    //转储服务 -不清楚做什么
+                case DUMP_SERVICE:
+                    handleDumpService((DumpComponentInfo)msg.obj);
+                    break;
+                    //转储 GFXINFO -不清楚做什么
+                case DUMP_GFXINFO:
+                    handleDumpGfxInfo((DumpComponentInfo) msg.obj);
+                    break;
+                    //内存低
+                case LOW_MEMORY:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;lowMemory&quot;);
+                    handleLowMemory();
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //传感器？
+                case PROFILER_CONTROL:
+                    handleProfilerControl(msg.arg1 != 0, (ProfilerInfo)msg.obj, msg.arg2);
+                    break;
+                    //创建备份--应该就是activity中创建备份的地方
+                case CREATE_BACKUP_AGENT:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;backupCreateAgent&quot;);
+                    handleCreateBackupAgent((CreateBackupAgentData)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //销毁备份
+                case DESTROY_BACKUP_AGENT:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;backupDestroyAgent&quot;);
+                    handleDestroyBackupAgent((CreateBackupAgentData)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //自杀，杀进程
+                case SUICIDE:
+                    Process.killProcess(Process.myPid());
+                    break;
+                    //移除内容提供者
+                case REMOVE_PROVIDER:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;providerRemove&quot;);
+                    completeRemoveProvider((ProviderRefCount)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //分发广播
+                case DISPATCH_PACKAGE_BROADCAST:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;broadcastPackage&quot;);
+                    handleDispatchPackageBroadcast(msg.arg1, (String[])msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //抛出远程服务异常
+                case SCHEDULE_CRASH:
+                    throwRemoteServiceException((String) msg.obj, msg.arg1);
+                    break;
+                    //处理转储堆
+                case DUMP_HEAP:
+                    handleDumpHeap((DumpHeapData) msg.obj);
+                    break;
+                    //将 Activity 的状态打印到给定的流中。 如果您运行“adb shell dumpsys activity &lt;activity_component_name&gt;”，则会调用它。
+                case DUMP_ACTIVITY:
+                    handleDumpActivity((DumpComponentInfo)msg.obj);
+                    break;
+                    //将提供者的状态打印到给定的流中。 如果您运行“adb shell dumpsys activity provider &lt;provider_component_name&gt;”，则会调用此方法。
+                case DUMP_PROVIDER:
+                    handleDumpProvider((DumpComponentInfo)msg.obj);
+                    break;
+                    //核心设置（？）更改后，重启所有的Activity
+                case SET_CORE_SETTINGS:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;setCoreSettings&quot;);
+                    handleSetCoreSettings((Bundle) msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //处理更新包兼容性信息
+                case UPDATE_PACKAGE_COMPATIBILITY_INFO:
+                    handleUpdatePackageCompatibilityInfo((UpdateCompatibilityData)msg.obj);
+                    break;
+                    //内容提供者销毁时？
+                case UNSTABLE_PROVIDER_DIED:
+                    handleUnstableProviderDied((IBinder)msg.obj, false);
+                    break;
+                    //处理请求协助上下文附加
+                case REQUEST_ASSIST_CONTEXT_EXTRAS:
+                    handleRequestAssistContextExtras((RequestAssistContextExtras)msg.obj);
+                    break;
+                    //半透明转换完成
+                case TRANSLUCENT_CONVERSION_COMPLETE:
+                    handleTranslucentConversionComplete((IBinder)msg.obj, msg.arg1 == 1);
+                    break;
+                    //处理安装提供程序
+                case INSTALL_PROVIDER:
+                    handleInstallProvider((ProviderInfo) msg.obj);
+                    break;
+                    //一个新的Activity选项？
+                case ON_NEW_ACTIVITY_OPTIONS:
+                    Pair&lt;IBinder, ActivityOptions&gt; pair = (Pair&lt;IBinder, ActivityOptions&gt;) msg.obj;
+                    onNewActivityOptions(pair.first, pair.second);
+                    break;
+                    //进入动画完成
+                case ENTER_ANIMATION_COMPLETE:
+                    handleEnterAnimationComplete((IBinder) msg.obj);
+                    break;
+                    //启用 Binder IPC 跟踪。
+                case START_BINDER_TRACKING:
+                    handleStartBinderTracking();
+                    break;
+                    //应该就是停止Binder并销毁
+                case STOP_BINDER_TRACKING_AND_DUMP:
+                    handleStopBinderTrackingAndDump((ParcelFileDescriptor) msg.obj);
+                    break;
+                    //本地语音交互开始
+                case LOCAL_VOICE_INTERACTION_STARTED:
+                    handleLocalVoiceInteractionStarted((IBinder) ((SomeArgs) msg.obj).arg1,
+                            (IVoiceInteractor) ((SomeArgs) msg.obj).arg2);
+                    break;
+                    //附加代理
+                case ATTACH_AGENT: {
+                    Application app = getApplication();
+                    handleAttachAgent((String) msg.obj, app != null ? app.mLoadedApk : null);
+                    break;
+                }
+                /**
+                包安装触发的更新通过包更新接收器。在这里，我们尝试捕获由其他来源（例如覆盖）引起的 ApplicationInfo 更改。这意味着我们希望对代码更改尽可能保守。获取旧 ApplicationInfo 和新 ApplicationInfo 的差异，看看是否需要更改任何内容。
+                */
+                case APPLICATION_INFO_CHANGED:
+                    handleApplicationInfoChanged((ApplicationInfo) msg.obj);
+                    break;
+                    //运行隔离入口点
+                case RUN_ISOLATED_ENTRY_POINT:
+                    handleRunIsolatedEntryPoint((String) ((SomeArgs) msg.obj).arg1,
+                            (String[]) ((SomeArgs) msg.obj).arg2);
+                    break;
+                    //执行交易？？
+                case EXECUTE_TRANSACTION:
+                    final ClientTransaction transaction = (ClientTransaction) msg.obj;
+                    mTransactionExecutor.execute(transaction);
+                    if (isSystem()) {
+                        // Client transactions inside system process are recycled on the client side
+                        // instead of ClientLifecycleManager to avoid being cleared before this
+                        // message is handled.
+                        transaction.recycle();
+                    }
+                    // TODO(lifecycler): Recycle locally scheduled transactions.
+                    break;
+                    //重新启动Activity，活动状态必须在 [ON_START..ON_STOP] 才能重新启动
+                case RELAUNCH_ACTIVITY:
+                    handleRelaunchActivityLocally((IBinder) msg.obj);
+                    break;
+                    //清除资源
+                case PURGE_RESOURCES:
+                    schedulePurgeIdler();
+                    break;
+                    //附加启动参数
+                case ATTACH_STARTUP_AGENTS:
+                    handleAttachStartupAgents((String) msg.obj);
+                    break;
+                    //更新UI状态
+                case UPDATE_UI_TRANSLATION_STATE:
+                    final SomeArgs args = (SomeArgs) msg.obj;
+                    updateUiTranslationState((IBinder) args.arg1, (int) args.arg2,
+                            (TranslationSpec) args.arg3, (TranslationSpec) args.arg4,
+                            (List&lt;AutofillId&gt;) args.arg5, (UiTranslationSpec) args.arg6);
+                    break;
+                    //这里应该是对应内容提供者的，内容收集者
+                case SET_CONTENT_CAPTURE_OPTIONS_CALLBACK:
+                    handleSetContentCaptureOptionsCallback((String) msg.obj);
+                    break;
+                    /**
+                    在检测启动时调用，在加载任何应用程序代码之前。 通常这将被实现为简单地调用start来start检测线程，然后在onStart继续执行。
+如果您不需要自己的线程——也就是说，您正在编写完全异步的检测（返回到事件循环以便应用程序可以运行），您可以简单地在此处开始检测，例如调用Context.startActivity开始适当的应用程序的第一个活动。
+                    */
+                case INSTRUMENT_WITHOUT_RESTART:
+                    handleInstrumentWithoutRestart((AppBindData) msg.obj);
+                    break;
+                    //销毁上面的检测对象
+                case FINISH_INSTRUMENTATION_WITHOUT_RESTART:
+                    handleFinishInstrumentationWithoutRestart();
+                    break;
+            }
+            Object obj = msg.obj;
+            if (obj instanceof SomeArgs) {
+                ((SomeArgs) obj).recycle();
+            }
+            if (DEBUG_MESSAGES) Slog.v(TAG, &quot;&lt;&lt;&lt; done: &quot; + codeToString(msg.what));
+        }
+</code></pre>
+<p>可以看到和四大组件（Activity，Service，Broadcast，ContentProvider）相关的都有,还有应用信息的设置，启动和关闭应用，UI的更新</p>
+<h2 id="3handler的消息发送">3.Handler的消息发送</h2>
+<p>最常使用的sendMessage：</p>
+<pre><code class="language-java"> public final boolean sendMessage(@NonNull Message msg) {
+        return sendMessageDelayed(msg, 0);
+}
+
+public final boolean sendMessageDelayed(@NonNull Message msg, long delayMillis) {
+     if (delayMillis &lt; 0) {
+        delayMillis = 0;
+    }
+     return sendMessageAtTime(msg, SystemClock.uptimeMillis() + delayMillis);
+}
+
+ public boolean sendMessageAtTime(@NonNull Message msg, long uptimeMillis) {
+     //消息队列
+    MessageQueue queue = mQueue;
+    if (queue == null) {
+        RuntimeException e = new RuntimeException(
+                this + &quot; sendMessageAtTime() called with no mQueue&quot;);
+         Log.w(&quot;Looper&quot;, e.getMessage(), e);
+         return false;
+    }
+     return enqueueMessage(queue, msg, uptimeMillis);
+ }
+
+private boolean enqueueMessage(@NonNull MessageQueue queue, @NonNull Message msg,
+            long uptimeMillis) {
+    //消息这里也就和Handler进行的绑定，所以这里也就是为什么Handler会有内存溢出的问题
+    //handler的处理一般都是作为内部类去使用，但是当handler持有外部类的引用时，而消息需要等待的时间比较长，
+    //例如20分钟，但是当前的Activity已经退出要销毁，根据GC的可达性分析，Message持有Handler，
+    //Handler又持有Activity的引用，所以这里GC就无法进行回收，从而发生异常。内存溢出很大的可能
+    //都是因为生命周期不一致引起的。
+    msg.target = this;
+    msg.workSourceUid = ThreadLocalWorkSource.getUid();
+
+    if (mAsynchronous) {
+        msg.setAsynchronous(true);
+    }
+    //见MessageQueue的方法分析
+     return queue.enqueueMessage(msg, uptimeMillis);
+}
+</code></pre>
+<p>MessageQueue相关方法分析：</p>
+<pre><code class="language-java">boolean enqueueMessage(Message msg, long when) {
+    //msg的target就是handler，如果没有那么这就没有消费者了
+        if (msg.target == null) {
+            throw new IllegalArgumentException(&quot;Message must have a target.&quot;);
+        }
+        //加锁保证在同一时刻只有一个插入消息队列的操作，并且没有其他的操作（取消息和消息退出）
+        synchronized (this) {
+            if (msg.isInUse()) {
+                throw new IllegalStateException(msg + &quot; This message is already in use.&quot;);
+            }
+            //Looper退出时会调用MessageQueue的quit设置mQuitting为true
+            if (mQuitting) {
+                IllegalStateException e = new IllegalStateException(
+                        msg.target + &quot; sending message to a Handler on a dead thread&quot;);
+                Log.w(TAG, e.getMessage(), e);
+                msg.recycle();
+                return false;
+            }
+
+            msg.markInUse();
+            msg.when = when;
+            Message p = mMessages;
+            boolean needWake;
+            if (p == null || when == 0 || when &lt; p.when) {
+                // New head, wake up the event queue if blocked.
+                msg.next = p;
+                mMessages = msg;
+                needWake = mBlocked;
+            } else {
+                // 插入队列中间。通常我们不必唤醒事件队列，除非队列的头部有一个barrier（同步屏障），并且该消息是队列中最早的异步消息。
+                needWake = mBlocked &amp;&amp; p.target == null &amp;&amp; msg.isAsynchronous();
+                Message prev;
+                for (;;) {
+                    prev = p;
+                    p = p.next;
+                    if (p == null || when &lt; p.when) {
+                        break;
+                    }
+                    if (needWake &amp;&amp; p.isAsynchronous()) {
+                        needWake = false;
+                    }
+                }
+                msg.next = p; // invariant: p == prev.next
+                prev.next = msg;
+            }
+
+            // We can assume mPtr != 0 because mQuitting is false.
+            //在这里如果当前的Looper是需要唤醒的，这里会执行
+            if (needWake) {
+                nativeWake(mPtr);
+            }
+        }
+        return true;
+    }
+</code></pre>
+<p>到这里Message已经到放入到MessageQueue中了，那么又是如何把消息取出来的并回掉给Handler中的handleMessage(Message msg)方法的呢？</p>
+<h2 id="4handlehandlemessage的回调">4.Handle.handleMessage()的回调</h2>
+<p>前面我们已经看到，Handler需要在必须在Looper的环境中</p>
+<pre><code class="language-java">public static void loop() {
+        final Looper me = myLooper();
+        //判断是否还没有启动Looper
+        if (me == null) {
+            throw new RuntimeException(&quot;No Looper; Looper.prepare() wasn't called on this thread.&quot;);
+        }
+        //判断是否重复启动Looper
+        if (me.mInLoop) {
+            Slog.w(TAG, &quot;Loop again would have the queued messages be executed&quot;
+                    + &quot; before this one completed.&quot;);
+        }
+
+        me.mInLoop = true;
+
+        // Make sure the identity of this thread is that of the local process,
+        // and keep track of what that identity token actually is.
+        Binder.clearCallingIdentity();
+        final long ident = Binder.clearCallingIdentity();
+
+        // Allow overriding a threshold with a system prop. e.g.
+        // adb shell 'setprop log.looper.1000.main.slow 1 &amp;&amp; stop &amp;&amp; start'
+        final int thresholdOverride =
+                SystemProperties.getInt(&quot;log.looper.&quot;
+                        + Process.myUid() + &quot;.&quot;
+                        + Thread.currentThread().getName()
+                        + &quot;.slow&quot;, 0);
+
+        me.mSlowDeliveryDetected = false;
+        //轮询获取MessageQueue中的message
+        for (;;) {
+            if (!loopOnce(me, ident, thresholdOverride)) {
+                return;
+            }
+        }
+    }
+
+    private static boolean loopOnce(final Looper me,
+            final long ident, final int thresholdOverride) {
+        Message msg = me.mQueue.next(); // might block
+        if (msg == null) {
+            //没有消息表示消息队列正在退出。
+            return false;
+        }
+
+        // This must be in a local variable, in case a UI event sets the logger
+        final Printer logging = me.mLogging;
+        if (logging != null) {
+            logging.println(&quot;&gt;&gt;&gt;&gt;&gt; Dispatching to &quot; + msg.target + &quot; &quot;
+                    + msg.callback + &quot;: &quot; + msg.what);
+        }
+        // Make sure the observer won't change while processing a transaction.
+        final Observer observer = sObserver;
+
+        final long traceTag = me.mTraceTag;
+        long slowDispatchThresholdMs = me.mSlowDispatchThresholdMs;
+        long slowDeliveryThresholdMs = me.mSlowDeliveryThresholdMs;
+        if (thresholdOverride &gt; 0) {
+            slowDispatchThresholdMs = thresholdOverride;
+            slowDeliveryThresholdMs = thresholdOverride;
+        }
+        final boolean logSlowDelivery = (slowDeliveryThresholdMs &gt; 0) &amp;&amp; (msg.when &gt; 0);
+        final boolean logSlowDispatch = (slowDispatchThresholdMs &gt; 0);
+
+        final boolean needStartTime = logSlowDelivery || logSlowDispatch;
+        final boolean needEndTime = logSlowDispatch;
+
+        if (traceTag != 0 &amp;&amp; Trace.isTagEnabled(traceTag)) {
+            Trace.traceBegin(traceTag, msg.target.getTraceName(msg));
+        }
+
+        final long dispatchStart = needStartTime ? SystemClock.uptimeMillis() : 0;
+        final long dispatchEnd;
+        Object token = null;
+        if (observer != null) {
+            token = observer.messageDispatchStarting();
+        }
+        long origWorkSource = ThreadLocalWorkSource.setUid(msg.workSourceUid);
+        try {
+            //这里的target就是Handler，处理消息的分发
+            msg.target.dispatchMessage(msg);
+            if (observer != null) {
+                observer.messageDispatched(token, msg);
+            }
+            dispatchEnd = needEndTime ? SystemClock.uptimeMillis() : 0;
+        } catch (Exception exception) {
+            if (observer != null) {
+                observer.dispatchingThrewException(token, msg, exception);
+            }
+            throw exception;
+        } finally {
+            ThreadLocalWorkSource.restore(origWorkSource);
+            if (traceTag != 0) {
+                Trace.traceEnd(traceTag);
+            }
+        }
+        if (logSlowDelivery) {
+            if (me.mSlowDeliveryDetected) {
+                if ((dispatchStart - msg.when) &lt;= 10) {
+                    Slog.w(TAG, &quot;Drained&quot;);
+                    me.mSlowDeliveryDetected = false;
+                }
+            } else {
+                if (showSlowLog(slowDeliveryThresholdMs, msg.when, dispatchStart, &quot;delivery&quot;,
+                        msg)) {
+                    // Once we write a slow delivery log, suppress until the queue drains.
+                    me.mSlowDeliveryDetected = true;
+                }
+            }
+        }
+        if (logSlowDispatch) {
+            showSlowLog(slowDispatchThresholdMs, dispatchStart, dispatchEnd, &quot;dispatch&quot;, msg);
+        }
+
+        if (logging != null) {
+            logging.println(&quot;&lt;&lt;&lt;&lt;&lt; Finished to &quot; + msg.target + &quot; &quot; + msg.callback);
+        }
+
+        // Make sure that during the course of dispatching the
+        // identity of the thread wasn't corrupted.
+        final long newIdent = Binder.clearCallingIdentity();
+        if (ident != newIdent) {
+            Log.wtf(TAG, &quot;Thread identity changed from 0x&quot;
+                    + Long.toHexString(ident) + &quot; to 0x&quot;
+                    + Long.toHexString(newIdent) + &quot; while dispatching to &quot;
+                    + msg.target.getClass().getName() + &quot; &quot;
+                    + msg.callback + &quot; what=&quot; + msg.what);
+        }
+        //消息回收
+        msg.recycleUnchecked();
+
+        return true;
+    }
+</code></pre>
+<p>这里我们首先要看一下MessageQueue中的next怎么获取消息的</p>
+<pre><code class="language-java">Message next() {
+        //如果消息循环已经退出并被处理，则返回此处。如果应用程序在退出后尝试重新启动不受支持的 Looper，就会发生这种情况。
+        final long ptr = mPtr;
+        if (ptr == 0) {
+            return null;
+        }
+
+        int pendingIdleHandlerCount = -1; // -1 only during first iteration
+        int nextPollTimeoutMillis = 0;
+        for (;;) {
+            if (nextPollTimeoutMillis != 0) {
+                Binder.flushPendingCommands();
+            }
+
+            nativePollOnce(ptr, nextPollTimeoutMillis);
+
+            synchronized (this) {
+                // Try to retrieve the next message.  Return if found.
+                final long now = SystemClock.uptimeMillis();
+                Message prevMsg = null;
+                Message msg = mMessages;
+                //查找同步屏障的消息
+                if (msg != null &amp;&amp; msg.target == null) {
+                    // Stalled by a barrier.  Find the next asynchronous message in the queue.
+                    do {
+                        prevMsg = msg;
+                        msg = msg.next;
+                    } while (msg != null &amp;&amp; !msg.isAsynchronous());
+                }
+                if (msg != null) {
+                    if (now &lt; msg.when) {
+                        //下一条消息未准备好。设置超时以在准备好时唤醒。
+                        nextPollTimeoutMillis = (int) Math.min(msg.when - now, Integer.MAX_VALUE);
+                    } else {
+                        // Got a message.
+                        mBlocked = false;
+                        if (prevMsg != null) {
+                            prevMsg.next = msg.next;
+                        } else {
+                            mMessages = msg.next;
+                        }
+                        msg.next = null;
+                        if (DEBUG) Log.v(TAG, &quot;Returning message: &quot; + msg);
+                        msg.markInUse();
+                        //这里返回当前需要处理的消息
+                        return msg;
+                    }
+                } else {
+                    // No more messages.
+                    nextPollTimeoutMillis = -1;
+                }
+
+                //现在处理退出消息，所有挂起的消息都已处理完毕。
+                if (mQuitting) {
+                    dispose();
+                    return null;
+                }
+
+                // 如果第一次空闲，则获取要运行的空闲程序的数量。空闲句柄仅在队列为空或队列中的第一条消息（可能是障碍）将在未来处理时运行。
+                if (pendingIdleHandlerCount &lt; 0
+                        &amp;&amp; (mMessages == null || now &lt; mMessages.when)) {
+                    pendingIdleHandlerCount = mIdleHandlers.size();
+                }
+                if (pendingIdleHandlerCount &lt;= 0) {
+                    // No idle handlers to run.  Loop and wait some more.
+                    mBlocked = true;
+                    continue;
+                }
+
+                if (mPendingIdleHandlers == null) {
+                    mPendingIdleHandlers = new IdleHandler[Math.max(pendingIdleHandlerCount, 4)];
+                }
+                mPendingIdleHandlers = mIdleHandlers.toArray(mPendingIdleHandlers);
+            }
+
+            // Run the idle handlers.
+            // We only ever reach this code block during the first iteration.
+            for (int i = 0; i &lt; pendingIdleHandlerCount; i++) {
+                final IdleHandler idler = mPendingIdleHandlers[i];
+                mPendingIdleHandlers[i] = null; // release the reference to the handler
+
+                boolean keep = false;
+                try {
+                    keep = idler.queueIdle();
+                } catch (Throwable t) {
+                    Log.wtf(TAG, &quot;IdleHandler threw exception&quot;, t);
+                }
+
+                if (!keep) {
+                    synchronized (this) {
+                        mIdleHandlers.remove(idler);
+                    }
+                }
+            }
+
+            // Reset the idle handler count to 0 so we do not run them again.
+            pendingIdleHandlerCount = 0;
+
+            // While calling an idle handler, a new message could have been delivered
+            // so go back and look again for a pending message without waiting.
+            nextPollTimeoutMillis = 0;
+        }
+    }
+</code></pre>
+<p>在获取到消息之后，在Looper中的loopOnce方法里 msg.target.dispatchMessage(msg);，其中Message的Target就是Handler</p>
+<pre><code class="language-java">  public void dispatchMessage(@NonNull Message msg) {
+        if (msg.callback != null) {
+            handleCallback(msg);
+        } else {
+            if (mCallback != null) {
+                if (mCallback.handleMessage(msg)) {
+                    return;
+                }
+            }
+            //handleMessage被调用了
+            handleMessage(msg);
+        }
+    }
+</code></pre>
+<p>到这一步整个流程串起来了，但是有两个问题</p>
+<ul>
+<li>1.当消息队列没有消息的时候，Looper是处于什么样的状态，因为它是一个循环操作，会阻塞线程？</li>
+<li>2.当队列中第一个消息的触发时间还没到的话，又是怎么处理的？<br>
+这个两个问题我们都可以从MessageQueue中的next()方法中找到答案：</li>
+</ul>
+<pre><code class="language-java"> Message next() {
+        // Return here if the message loop has already quit and been disposed.
+        // This can happen if the application tries to restart a looper after quit
+        // which is not supported.
+        final long ptr = mPtr;
+        if (ptr == 0) {
+            return null;
+        }
+
+        int pendingIdleHandlerCount = -1; // -1 only during first iteration
+        int nextPollTimeoutMillis = 0;
+        for (;;) {
+            if (nextPollTimeoutMillis != 0) {
+                Binder.flushPendingCommands();
+            }
+            //nextPollTimeoutMillis就是下一个任务需要等待执行的时间，如果nextPollTimeoutMillis为-1，那么这个Looper会一直休眠等待下去，所以子线程中的Looper没有消息要处理了要及时调用quite
+            nativePollOnce(ptr, nextPollTimeoutMillis);
+
+            synchronized (this) {
+                // Try to retrieve the next message.  Return if found.
+                final long now = SystemClock.uptimeMillis();
+                Message prevMsg = null;
+                Message msg = mMessages;
+                if (msg != null &amp;&amp; msg.target == null) {
+                    // Stalled by a barrier.  Find the next asynchronous message in the queue.
+                    do {
+                        prevMsg = msg;
+                        msg = msg.next;
+                    } while (msg != null &amp;&amp; !msg.isAsynchronous());
+                }
+                if (msg != null) {
+                    if (now &lt; msg.when) {
+                        //获取到的消息没有到执行的时间，获取一个执行时间差
+                        nextPollTimeoutMillis = (int) Math.min(msg.when - now, Integer.MAX_VALUE);
+                    } else {
+                        // Got a message.
+                        mBlocked = false;
+                        if (prevMsg != null) {
+                            prevMsg.next = msg.next;
+                        } else {
+                            mMessages = msg.next;
+                        }
+                        msg.next = null;
+                        if (DEBUG) Log.v(TAG, &quot;Returning message: &quot; + msg);
+                        msg.markInUse();
+                        return msg;
+                    }
+                } else {
+                    //这里就是消息队列中没有消息了
+                    nextPollTimeoutMillis = -1;
+                }
+
+                // 只有调用quite之后mQuitting才为true
+                if (mQuitting) {
+                    dispose();
+                    return null;
+                }
+
+                // If first time idle, then get the number of idlers to run.
+                // Idle handles only run if the queue is empty or if the first message
+                // in the queue (possibly a barrier) is due to be handled in the future.
+                if (pendingIdleHandlerCount &lt; 0
+                        &amp;&amp; (mMessages == null || now &lt; mMessages.when)) {
+                    pendingIdleHandlerCount = mIdleHandlers.size();
+                }
+                //在这里跳到下一个循环，looper就开始等待了
+                if (pendingIdleHandlerCount &lt;= 0) {
+                    // No idle handlers to run.  Loop and wait some more.
+                    mBlocked = true;
+                    continue;
+                }
+
+                if (mPendingIdleHandlers == null) {
+                    mPendingIdleHandlers = new IdleHandler[Math.max(pendingIdleHandlerCount, 4)];
+                }
+                mPendingIdleHandlers = mIdleHandlers.toArray(mPendingIdleHandlers);
+            }
+
+            // Run the idle handlers.
+            // We only ever reach this code block during the first iteration.
+            for (int i = 0; i &lt; pendingIdleHandlerCount; i++) {
+                final IdleHandler idler = mPendingIdleHandlers[i];
+                mPendingIdleHandlers[i] = null; // release the reference to the handler
+
+                boolean keep = false;
+                try {
+                    keep = idler.queueIdle();
+                } catch (Throwable t) {
+                    Log.wtf(TAG, &quot;IdleHandler threw exception&quot;, t);
+                }
+
+                if (!keep) {
+                    synchronized (this) {
+                        mIdleHandlers.remove(idler);
+                    }
+                }
+            }
+
+            // Reset the idle handler count to 0 so we do not run them again.
+            pendingIdleHandlerCount = 0;
+
+            // While calling an idle handler, a new message could have been delivered
+            // so go back and look again for a pending message without waiting.
+            nextPollTimeoutMillis = 0;
+        }
+    }
+</code></pre>
+<p>到这里我们也就是可以知道为什么Handler能够把我们在子线程发的消息转换到主线程来了，handler线程间通信是通过共享内存实现的，内存是不分线程的，但是函数是有线程区分的，当我们在子线程通过handler.sendMessage(msg)-》MessageQueue.equeueMessage(msg)这个就是子线程操作并在MessageQueue管理的内存空间中写入一个对象数据<br>
+而在主线程中的Looper不断的轮询消息队列的方法loop是执行在主线程的，它不断的在主线程中从MessageQueue中拿消息，这样就完成了线程切换。</p>
+<h2 id="5那么在looper是如何保证在线程的唯一性">5.那么在Looper是如何保证在线程的唯一性？</h2>
+<p>ThreadLocal 可以进行线程数据隔离，每个线程都有单独的一个副本<br>
+每个线程都只会有一个Looper，它就是通过ThreadLocal来进行实现的</p>
+<p>Looper相关的源码：</p>
+<pre><code class="language-java">public final class Looper {
+    //ThreadLocal只有有一个，并且Looper的构造方法私有化，那么只能通过prepare()方法来进行调用
+   static final ThreadLocal&lt;Looper&gt; sThreadLocal = new ThreadLocal&lt;Looper&gt;();
+    /**
+    将当前线程初始化为循环程序。 这使您有机会创建处理程序，然后在实际开始循环之前引用此循环程序。 调用此方法后一定要调用loop() ，并通过调用quit()结束它。
+    */
+    public static void prepare() {
+        prepare(true);
+    }
+
+    private static void prepare(boolean quitAllowed) {
+        //首先检查当前是否已经有Looper，有那么就抛出异常，从而保证了一个线程只有一个Looper
+        if (sThreadLocal.get() != null) {
+            throw new RuntimeException(&quot;Only one Looper may be created per thread&quot;);
+        }
+        sThreadLocal.set(new Looper(quitAllowed));
+    }
+
+ private Looper(boolean quitAllowed) {
+        mQueue = new MessageQueue(quitAllowed);
+        mThread = Thread.currentThread();
+    }
+}
+</code></pre>
+<p>ThreadLocal:</p>
+<pre><code class="language-java">/**
+将此线程局部变量的当前线程副本设置为指定值。 大多数子类将不需要覆盖此方法，仅依赖于initialValue方法来设置线程initialValue的值。
+参数：
+value -- 要存储在此线程本地的当前线程副本中的值。
+*/
+    public void set(T value) {
+        //获取当前线程
+        Thread t = Thread.currentThread();
+        //通过线程获取ThreadLocalMap
+        ThreadLocalMap map = getMap(t);
+        if (map != null)
+            map.set(this, value);
+        else
+            createMap(t, value);
+    }
+</code></pre>
+<h2 id="6同步屏障">6.同步屏障</h2>
+<h2 id="7面试问题回答">7.面试问题回答</h2>
+<ul>
+<li>1.一个线程有几个Handler？<br>
+任意个，handler是new出来的</li>
+<li>2.一个线程有几个looper，如何保证的？<br>
+只有一个，保障机制Looper的构建和ThreadLocal一起</li>
+<li>3.Handler内存泄漏原因？为什么其他的内部类没有说过这个问题？<br>
+内存泄漏发送主要就是因为生命周期不一致的问题，Handler中容易持有外部类的引用，并且Message又会持有Handler，当Message没有回收时，根据可达性分析，这一系列的对象都无法被回收，也就发生内存泄漏了。</li>
+<li>4.为何主线程可以new Handler？如果想要在子线程中new handler要做什么准备<br>
+在主线程中一创建就构建好了Looper了，但是子线程中没有，所有需要调用Looper.prepare()构建Looper，调用Looper.loop()启动Looper</li>
+<li>5.子线程中维护的Looper，消息队列无消息的时候处理方案是什么？有什么用？<br>
+需要调用quit()方法来退出MessageQueue的循环，返回一个为null的Message</li>
+<li>6.既然可以存在多个Handler往MessageQueue中添加数据（发消息时各个Handler可能处于不同线程），那它内部是如何保证线程安全的？<br>
+通过synchronized关键字包裹代码块实现，一个线程中只会有一个MessageQueue，所以在通过synchronized（this）加锁的代码（加入队列，取出，退出）的操作，同一时间只能由一个线程可以执行。</li>
+<li>7.我们使用Message时应该如何创建它？<br>
+Message.obtain(),这是从消息的全量池中返回一个新的Message对象，避免分配新对象</li>
+<li>8.Looper死循环为什么不会导致应用卡死？</li>
+</ul>
+]]></content>
+    </entry>
     <entry>
         <title type="html"><![CDATA[Hilt的使用]]></title>
         <id>https://arms-merchants.github.io/post/hilt-de-shi-yong/</id>
@@ -3195,726 +4113,6 @@ public class NestedScrollingParentView extends FrameLayout implements NestedScro
             @NonNull int[] consumed);
 </code></pre>
 <p>方法多了一个参数consumed，这里返回了父控件消费的滑动距离</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[关于ViewGroup中dispatchTouchEvent的源码分析]]></title>
-        <id>https://arms-merchants.github.io/post/guan-yu-viewgroup-zhong-dispatchtouchevent-de-yuan-ma-fen-xi/</id>
-        <link href="https://arms-merchants.github.io/post/guan-yu-viewgroup-zhong-dispatchtouchevent-de-yuan-ma-fen-xi/">
-        </link>
-        <updated>2021-11-03T07:16:12.000Z</updated>
-        <content type="html"><![CDATA[<p><a href="https://juejin.cn/post/6917056099069722632">原文链接</a></p>
-<h3 id="事件分发流程图">事件分发流程图</h3>
-<figure data-type="image" tabindex="1"><img src="https://arms-merchants.github.io//post-images/1635927250830.webp" alt="" loading="lazy"></figure>
-<h3 id="一些结论">一些结论：</h3>
-<p>1.如果一个view在ACTION_DOWN时没有消费事件，那么同一事件序列之后的ACTION_MOVE ACTION_UP都不会交由此view处理<br>
-2.如果一个view在ACTION_DOWN时消费了事件，那么同一事件序列之后的ACTION_MOVE ACTION-UP都由此view处理<br>
-3.如果一个ViewGroup在一定条件下，拦截了ACTION_MOVE事件，那么此前消费事件的子view会收到一个ACTION_CANCEL事件，同时onInteceptTouchEvent在此事件序列不会再调用<br>
-4.ViewGroup中可以进行事件分发以及和事件处理，View主要负责事件处理</p>
-<p>分析事件的视图层级关系：<br>
-<img src="https://arms-merchants.github.io//post-images/1635927846282.webp" alt="" loading="lazy"></p>
-<h3 id="action_down的调用时序图">ACTION_DOWN的调用时序图</h3>
-<p><img src="https://arms-merchants.github.io//post-images/1635927873262.webp" alt="" loading="lazy"><br>
-事件经过流程：<br>
-DecorView -&gt; Activity -&gt; PhoneWindow -&gt; DecorView -&gt; LinearLayout -&gt; FrameLayout -&gt; ActionBarOverlayLayout -&gt; ContentFrameLayout -&gt; ConstraintLayout -&gt; MyViewgroup -&gt; MyView<br>
-递归调用流程：<br>
-<img src="https://arms-merchants.github.io//post-images/1635927950587.webp" alt="" loading="lazy"></p>
-<h2 id="activityjava"><strong>Activity.java</strong></h2>
-<pre><code class="language-java">public boolean dispatchTouchEvent(MotionEvent ev) {
-    if (ev.getAction() == MotionEvent.ACTION_DOWN) {
-        // 当触屏、按home、back等一些人为的操作，会调用此方法，这里就是触屏按下
-        onUserInteraction();
-    }
-    // 调用 PhoneWindow 的 superDispatchTouchEvent 方法
-    // 若 superDispatchTouchEvent 返回true（说明事件被底下的 View 消费了），
-    // 直接return true，不会再执行 Activity 的 onTouchEvent
-    if (getWindow().superDispatchTouchEvent(ev)) {
-        return true;
-    }
-    return onTouchEvent(ev);
-}
-</code></pre>
-<h3 id="针对具体的事件分析在上面层级模型的情况下处理事件分析这里以action_down开始">针对具体的事件分析，在上面层级模型的情况下处理事件分析，这里以ACTION_DOWN开始：</h3>
-<pre><code class="language-java"> @Override
-    public boolean dispatchTouchEvent(MotionEvent ev) {
-        if (mInputEventConsistencyVerifier != null) {
-            mInputEventConsistencyVerifier.onTouchEvent(ev, 1);
-        }
-
-        // If the event targets the accessibility focused view and this is it, start
-        // normal event dispatch. Maybe a descendant is what will handle the click.
-        if (ev.isTargetAccessibilityFocus() &amp;&amp; isAccessibilityFocusedViewOrHost()) {
-            ev.setTargetAccessibilityFocus(false);
-        }
-        //
-        boolean handled = false;
-        //进行事件进行安全过滤，根据源码看基本上就是处理当view被遮挡时不响应事件
-        if (onFilterTouchEventForSecurity(ev)) {
-            final int action = ev.getAction();
-            /**
-            这里的&amp; MotionEvent.ACTION_MASK（取低8位），因为支持多点触摸，最大可响应的多点触摸32个点
-            第一个手指按下的事件：ACTION_DOWN
-            第二个手指按下的事件：ACTION_POINTER_DOWN
-            此时抬起一根手指的事件：ACTION_POINTER_UP
-            再抬起另外一根手指的事件：ACTION_UP
-            通过ev.getAction()得到值包含动作（低8位）、触摸索引点（9-16位）等，而不单单是上述的几种行为动作，所以不能通过if(ev.getAction()==ACTION_POINTER_DOWN)这样对比，因为ACTION_POINTER_DOWN只是ev.getAction()中的一部分
-            那么现在需要知道当前MotionEvent的action是何种类型，就需要从ev.getAction()返回的值里剥离出来，所以加了&amp; MotionEvent.ACTION_MASK过滤其他信息，只取低8位，此举与ev.getActionMasked等效。
-            **/
-             // 获取事件类型。action的值高8位会包含该事件触摸点索引信息，actionMasked为干净的事件类型，
-            // 在单点触摸情况下action和actionMasked无差别。
-            final int actionMasked = action &amp; MotionEvent.ACTION_MASK;
-
-            // Handle an initial down.
-            //不论是点击、长按、滑动事件的第一个事件动作一定是ACTION_DOWN
-            //当是ACTION_DOWN时取消和清除所有的触摸目标，重置触摸状态
-            //TouchTarget是一个链标结构，链接了多个能够消费事件的子view
-            if (actionMasked == MotionEvent.ACTION_DOWN) {
-                 // ACTION_DOWN表示一次全新的事件序列开始，那么清除旧的
-                // TouchTarget（正常情况下TouchTarget在上一轮事件序列结束时会清
-                // 空，若此时仍存在，则需要先给这些TouchTarget派发ACTION_CANCEL事
-                // 件，然后再清除），重置触摸滚动等相关的状态和标识位。
-                // Throw away all previous state when starting a new touch gesture.
-                // The framework may have dropped the up or cancel event for the previous gesture
-                // due to an app switch, ANR, or some other state change.
-                cancelAndClearTouchTargets(ev);
-                resetTouchState();
-            }
-
-            // Check for interception.、
-            //检查拦截
-            final boolean intercepted;
-            /**
-            这里是ACTION_DOWN，mFirstTouchTarget为null，因为一遍递归还没走完，没有找到事件的消费的事件的View，也就是TouchTarget，为什么叫mFirstTouchTarget，是因为在多点触摸时这里的first指的是消费第一根手指落下事件的view
-            **/
-            if (actionMasked == MotionEvent.ACTION_DOWN
-                    || mFirstTouchTarget != null) {
-                // 判断child是否抢先调用了requestDisallowInterceptTouchEvent方法
-                final boolean disallowIntercept = (mGroupFlags &amp; FLAG_DISALLOW_INTERCEPT) != 0;
-                if (!disallowIntercept) {
-                    //因为这里分析的是ViewGroup中的事件分发，所以就会有涉及到子view调用requestDisallowInterceptTouchEvent，设置事件拦截
-                    // 再通过onInterceptTouchEvent方法判断（子类可重写）
-                    intercepted = onInterceptTouchEvent(ev);
-                    ev.setAction(action); // restore action in case it was changed
-                } else {
-                    intercepted = false;
-                }
-            } else {
-                // There are no touch targets and this action is not an initial down
-                // so this view group continues to intercept touches.
-                //如果不是ACTION_DOWN，并且子view没有消费（mFirstTouchTarget为null），就直接拦截
-
-            // If intercepted, start normal event dispatch. Also if there is already
-            // a view that is handling the gesture, do normal event dispatch.
-            if (intercepted || mFirstTouchTarget != null) {
-                ev.setTargetAccessibilityFocus(false);
-            }
-
-            // Check for cancelation.
-            //检查当前事件是否是ACTION_CANCEL事件，当前是ACTION_DOWN，canceled为false
-            final boolean canceled = resetCancelNextUpFlag(this)
-                    || actionMasked == MotionEvent.ACTION_CANCEL;
-
-            // Update list of touch targets for pointer down, if needed.
-            //如果支持多点触摸的话，需要将事件拆分给不同的TouchTargets,这里split = true
-            final boolean split = (mGroupFlags &amp; FLAG_SPLIT_MOTION_EVENTS) != 0;
-               // newTouchTarget用于保存新的派发目标
-            TouchTarget newTouchTarget = null;
-             // 标记在目标查找过程中是否已经对newTouchTarget进行过派发
-            boolean alreadyDispatchedToNewTouchTarget = false;
-            // 只有当非cancele且不拦截的情况才进行目标查找，否则直接跳到执行派发步骤。如果是
-    // 因为被拦截，那么还没有派发目标，则会由ViewGroup自己处理事件
-            if (!canceled &amp;&amp; !intercepted) {
-                //不是取消，并且没有拦截事件进入这里处理
-                // If the event is targeting accessibility focus we give it to the
-                // view that has accessibility focus and if it does not handle it
-                // we clear the flag and dispatch the event to all children as usual.
-                // We are looking up the accessibility focused host to avoid keeping
-                // state since these events are very rare.
-                View childWithAccessibilityFocus = ev.isTargetAccessibilityFocus()
-                        ? findChildWithAccessibilityFocus() : null;
-                //只有下面事件才会去找能够消费的子view，这里是ACTION_DOWN进if
-                if (actionMasked == MotionEvent.ACTION_DOWN
-                        || (split &amp;&amp; actionMasked == MotionEvent.ACTION_POINTER_DOWN)
-                        || actionMasked == MotionEvent.ACTION_HOVER_MOVE) {
-                /**
-                获取当前的MotionEvent的索引，因为是支持多点触摸，那么就需要知道当前的MotionEvent是由哪个触控点产生的，这个触控点的信息，肯定需要包含在这个MotionEvent中的，就在action中的9-16位，action是32位的int，将9-16位取出，再右移8位，得到的就是这个actionIndex,当前分析单点触摸，actionIndex = 0，若是第二根手指按下，actionIndex =1
-                */
-
-                    final int actionIndex = ev.getActionIndex(); // always 0 for down
-                    //idBitsToAssign = 1
-                      // 通过触摸点索引取得触摸点ID，然后左移x位（x=ID值）
-                    final int idBitsToAssign = split ? 1 &lt;&lt; ev.getPointerId(actionIndex)
-                            : TouchTarget.ALL_POINTER_IDS;
-
-                    // Clean up earlier touch targets for this pointer id in case they
-                    // have become out of sync.
-                      // 遍历mFirstTouchTarget链表，进行清理。若有TouchTarget设置了此触摸点ID，
-            // 则将其移除该ID，若移除后的TouchTarget已经没有触摸点ID了，那么接着移除
-            // 这个TouchTarget。
-                    removePointersFromTouchTargets(idBitsToAssign);
-
-                    final int childrenCount = mChildrenCount;
-                    if (newTouchTarget == null &amp;&amp; childrenCount != 0) {
-                        final float x = ev.getX(actionIndex);
-                        final float y = ev.getY(actionIndex);
-                        // Find a child that can receive the event.
-                        // Scan children from front to back.
-                        //一个ViewGroup会包含多个view，那么先找哪个子view去进行事件的传递呢？根据人的理解因该是最上层的view响应，那么这里先根据z轴的值进行排序
-                        //若是当前的子view中没有设置z轴的话，这里的preorderedList位null，这里就为null
-                        final ArrayList&lt;View&gt; preorderedList = buildTouchDispatchChildList();
-                        final boolean customOrder = preorderedList == null
-                                &amp;&amp; isChildrenDrawingOrderEnabled();
-                        final View[] children = mChildren;
-                        /**
-                        这里就是循环查找，从外往里扫描，可以理解为，一个ViewGroup中有多个子view，从布局中的后写的view开始扫描，因为在很多布局的设置中，后写的view会覆盖遮挡到前面的view，那么在上面的view应该是要先响应点击事件的
-                        */
-                        for (int i = childrenCount - 1; i &gt;= 0; i--) {
-                            //结合前面查到的z轴排序的结合获取view，这里的preorderedList是null，所以正常获取在child集合中的下标位置
-                            final int childIndex = getAndVerifyPreorderedIndex(
-                                    childrenCount, i, customOrder);
-                            final View child = getAndVerifyPreorderedView(
-                                    preorderedList, children, childIndex);
-
-                            // If there is a view that has accessibility focus we want it
-                            // to get the event first and if not handled we will perform a
-                            // normal dispatch. We may do a double iteration but this is
-                            // safer given the timeframe.
-                            //因为这里是ACTION_DOWN，第一次的循环还没走完childWithAccessibilityFocus为null
-                            if (childWithAccessibilityFocus != null) {
-                                if (childWithAccessibilityFocus != child) {
-                                    continue;
-                                }
-                                childWithAccessibilityFocus = null;
-                                i = childrenCount - 1;
-                            }
-                            //判断当前的child能否接受事件，并且按下的坐标点位于child区域内，只要一个不符合跳出循环，查找下一个view
-                            if (!canViewReceivePointerEvents(child)
-                                    || !isTransformedTouchPointInView(x, y, child, null)) {
-                                ev.setTargetAccessibilityFocus(false);
-                                continue;
-                            }
-                            /**
-                            这里是通过mFirstTouchTarget来对比，如果之前已经有view消费了事件，那么mFirstTouchTarget必定是不为null的，那么事件应该是第二根手指落下的事件，这里就是对比当前的view和mFirstTouchTarget中的view比较，如果是同一个view，就复用，只是把pointerIdBits更新下
-                            newTouchTarget为null，因为我们还没有view消费事件，mFirstTouchTarget还为null
-                            */
-                            newTouchTarget = getTouchTarget(child);
-                             // 遍历mFirstTouchTarget链表，查找该child对应的TouchTarget。
-                    // 如果之前已经有触摸点落于该child中且消费了事件，这次新的触摸点也落于该child中，
-                    // 那么就会找到之前保存的TouchTarget。
-                            if (newTouchTarget != null) {
-                                // Child is already receiving touch within its bounds.
-                                // Give it the new pointer in addition to the ones it is handling.
-                                 // 派发目标已经存在，只要给TouchTarget的触摸点ID集合添加新的
-                        // ID即可，然后退出子view遍历。
-                                newTouchTarget.pointerIdBits |= idBitsToAssign;
-                                break;
-                            }
-
-                            resetCancelNextUpFlag(child);
-                            //这里才是真正去分发事件的地方，也就是在这个方法里进行下一次递归
-                            if (dispatchTransformedTouchEvent(ev, false, child, idBitsToAssign)) {
-                                /**
-                                如果方法进入这里，说明子view消费了事件，当前的递归层级view为MyViewgrou，所以dispatchTransformedTouchEvent的向下调用就是，MyView的dipatchTouchEvent,MyView消费ACTION_DOWN事件，递归跳出，当前的ViewGroup就是MyViewGroup
-                                */
-                                // Child wants to receive touch within its bounds.
-                                mLastTouchDownTime = ev.getDownTime();
-                                if (preorderedList != null) {
-                                    // childIndex points into presorted list, find original index
-                                    for (int j = 0; j &lt; childrenCount; j++) {
-                                        if (children[childIndex] == mChildren[j]) {
-                                            mLastTouchDownIndex = j;
-                                            break;
-                                        }
-                                    }
-                                } else {
-                                    mLastTouchDownIndex = childIndex;
-                                }
-                                mLastTouchDownX = ev.getX();
-                                mLastTouchDownY = ev.getY();
-                                //这里就给mFirstTouchTarget设置值，也就是有事件消费的View了，并将其设置为新的头节点
-                                newTouchTarget = addTouchTarget(child, idBitsToAssign);
-                                //是否已经消费标志
-                                alreadyDispatchedToNewTouchTarget = true;
-                                //这的循环层级是在MyViewGroup中，找到消费的子view，就不再找了，跳出循环
-                                break;
-                            }
-
-                            // The accessibility focus didn't handle the event, so clear
-                            // the flag and do a normal dispatch to all children.
-                            ev.setTargetAccessibilityFocus(false);
-                        }
-                        if (preorderedList != null) preorderedList.clear();
-                    }
-                    // 检查是否找到派发目标
-                    if (newTouchTarget == null &amp;&amp; mFirstTouchTarget != null) {
-                        // Did not find a child to receive the event.
-                        // Assign the pointer to the least recently added target.
-                        // 若没有找到派发目标（没有命中child或命中的child不消费），但是存在
-                // 旧的TouchTarget，那么将该事件派发给最开始添加的那个TouchTarget，
-                // 多点触摸情况下有可能这个事件是它想要的。
-                        newTouchTarget = mFirstTouchTarget;
-                        while (newTouchTarget.next != null) {
-                            newTouchTarget = newTouchTarget.next;
-                        }
-                        newTouchTarget.pointerIdBits |= idBitsToAssign;
-                    }
-                }
-            }
-            //如果没有子view消费事件，mFirstTouchTarget为null，但是这里MyView消费了，所以mFirstTouchTarget不为null
-            // Dispatch to touch targets.
-            if (mFirstTouchTarget == null) {
-                // No touch targets so treat this as an ordinary view.
-                //如果子view没有能消费的，那么就把事件分配给自己，看看自己能消费吗
-                handled = dispatchTransformedTouchEvent(ev, canceled, null,
-                        TouchTarget.ALL_POINTER_IDS);
-            } else {
-                // Dispatch to touch targets, excluding the new touch target if we already
-                // dispatched to it.  Cancel touch targets if necessary.
-                TouchTarget predecessor = null;
-                TouchTarget target = mFirstTouchTarget;
-                //判断当前的alreadyDispatchedToNewTouchTarget处理标识和newTouchTarget和mFirstTouchTarget是否为同一个对象，这是里直接走if
-                while (target != null) {
-                    final TouchTarget next = target.next;
-                    if (alreadyDispatchedToNewTouchTarget &amp;&amp; target == newTouchTarget) {
-                        handled = true;
-                    } else {
-                        final boolean cancelChild = resetCancelNextUpFlag(target.child)
-                                || intercepted;
-                        if (dispatchTransformedTouchEvent(ev, cancelChild,
-                                target.child, target.pointerIdBits)) {
-                            handled = true;
-                        }
-                        if (cancelChild) {
-                            if (predecessor == null) {
-                                mFirstTouchTarget = next;
-                            } else {
-                                predecessor.next = next;
-                            }
-                            target.recycle();
-                            target = next;
-                            continue;
-                        }
-                    }
-                    predecessor = target;
-                    target = next;
-                }
-            }
-
-            // Update list of touch targets for pointer up or cancel, if needed.
-            if (canceled
-                    || actionMasked == MotionEvent.ACTION_UP
-                    || actionMasked == MotionEvent.ACTION_HOVER_MOVE) {
-                resetTouchState();
-            } else if (split &amp;&amp; actionMasked == MotionEvent.ACTION_POINTER_UP) {
-                final int actionIndex = ev.getActionIndex();
-                final int idBitsToRemove = 1 &lt;&lt; ev.getPointerId(actionIndex);
-                removePointersFromTouchTargets(idBitsToRemove);
-            }
-        }
-
-        if (!handled &amp;&amp; mInputEventConsistencyVerifier != null) {
-            mInputEventConsistencyVerifier.onUnhandledEvent(ev, 1);
-        }
-        //将结果返回给上一层调用者（父view，我们这里是MyViewGroup，它的父View是ConstraintLayout），之后的层层返回，跳出递归
-        return handled;
-    }
-</code></pre>
-<h3 id="action_move其他的事件就类似了">ACTION_MOVE，其他的事件就类似了</h3>
-<pre><code class="language-java"> @Override
-    public boolean dispatchTouchEvent(MotionEvent ev) {
-        if (mInputEventConsistencyVerifier != null) {
-            mInputEventConsistencyVerifier.onTouchEvent(ev, 1);
-        }
-
-        // If the event targets the accessibility focused view and this is it, start
-        // normal event dispatch. Maybe a descendant is what will handle the click.
-        if (ev.isTargetAccessibilityFocus() &amp;&amp; isAccessibilityFocusedViewOrHost()) {
-            ev.setTargetAccessibilityFocus(false);
-        }
-        //
-        boolean handled = false;
-        //进行事件进行安全过滤，根据源码看基本上就是处理当view被遮挡时不响应事件
-        if (onFilterTouchEventForSecurity(ev)) {
-            final int action = ev.getAction();
-            /**
-            这里的&amp; MotionEvent.ACTION_MASK（取低8位），因为支持多点触摸，最大可响应的多点触摸32个点
-            第一个手指按下的事件：ACTION_DOWN
-            第二个手指按下的事件：ACTION_POINTER_DOWN
-            此时抬起一根手指的事件：ACTION_POINTER_UP
-            再抬起另外一根手指的事件：ACTION_UP
-            通过ev.getAction()得到值包含动作（低8位）、触摸索引点（9-16位）等，而不单单是上述的几种行为动作，所以不能通过if(ev.getAction()==ACTION_POINTER_DOWN)这样对比，因为ACTION_POINTER_DOWN只是ev.getAction()中的一部分
-            那么现在需要知道当前MotionEvent的action是何种类型，就需要从ev.getAction()返回的值里剥离出来，所以加了&amp; MotionEvent.ACTION_MASK过滤其他信息，只取低8位，此举与ev.getActionMasked等效。
-            **/
-            final int actionMasked = action &amp; MotionEvent.ACTION_MASK;
-
-            // Handle an initial down.
-            //这里是ACTION_MOVE事件，所以不会清除之前的事件状态什么的，也就是mFirstTouchTarget保存有ACTION_DOWN的处理view
-            if (actionMasked == MotionEvent.ACTION_DOWN) {
-                // Throw away all previous state when starting a new touch gesture.
-                // The framework may have dropped the up or cancel event for the previous gesture
-                // due to an app switch, ANR, or some other state change.
-                cancelAndClearTouchTargets(ev);
-                resetTouchState();
-            }
-
-            // Check for interception.、
-            //检查拦截
-            final boolean intercepted;
-            /**
-            因为已经有view响应事件ACTION_DWON,所以mFirstTouchTarget ！= null
-            **/
-            if (actionMasked == MotionEvent.ACTION_DOWN
-                    || mFirstTouchTarget != null) {
-                final boolean disallowIntercept = (mGroupFlags &amp; FLAG_DISALLOW_INTERCEPT) != 0;
-                if (!disallowIntercept) {
-                    //因为这里分析的是ViewGroup中的事件分发，所以就会有涉及到子view调用requestDisallowInterceptTouchEvent，设置事件拦截
-                    intercepted = onInterceptTouchEvent(ev);
-                    ev.setAction(action); // restore action in case it was changed
-                } else {
-                    intercepted = false;
-                }
-            } else {
-                // There are no touch targets and this action is not an initial down
-                // so this view group continues to intercept touches.
-                //如果不是ACTION_DOWN，并且子view没有消费（mFirstTouchTarget为null），就直接拦截
-                intercepted = true;
-            }
-
-            // If intercepted, start normal event dispatch. Also if there is already
-            // a view that is handling the gesture, do normal event dispatch.
-            if (intercepted || mFirstTouchTarget != null) {
-                ev.setTargetAccessibilityFocus(false);
-            }
-
-            // Check for cancelation.
-            //检查当前事件是否是ACTION_CANCEL事件，当前是ACTION_MOVE，canceled为false
-            final boolean canceled = resetCancelNextUpFlag(this)
-                    || actionMasked == MotionEvent.ACTION_CANCEL;
-
-            // Update list of touch targets for pointer down, if needed.
-            //如果支持多点触摸的话，需要将事件拆分给不同的TouchTargets,这里split = true
-            final boolean split = (mGroupFlags &amp; FLAG_SPLIT_MOTION_EVENTS) != 0;
-            TouchTarget newTouchTarget = null;
-            boolean alreadyDispatchedToNewTouchTarget = false;
-            if (!canceled &amp;&amp; !intercepted) {
-                //不是取消，并且没有拦截事件进入这里处理
-                // If the event is targeting accessibility focus we give it to the
-                // view that has accessibility focus and if it does not handle it
-                // we clear the flag and dispatch the event to all children as usual.
-                // We are looking up the accessibility focused host to avoid keeping
-                // state since these events are very rare.
-                View childWithAccessibilityFocus = ev.isTargetAccessibilityFocus()
-                        ? findChildWithAccessibilityFocus() : null;
-                //只有下面事件才会去找能够消费的子view，这里是ACTION_MOVE所以下面的if不会走
-                if (actionMasked == MotionEvent.ACTION_DOWN
-                        || (split &amp;&amp; actionMasked == MotionEvent.ACTION_POINTER_DOWN)
-                        || actionMasked == MotionEvent.ACTION_HOVER_MOVE) {
-                    final int actionIndex = ev.getActionIndex(); // always 0 for down
-                    //idBitsToAssign = 1
-                    final int idBitsToAssign = split ? 1 &lt;&lt; ev.getPointerId(actionIndex)
-                            : TouchTarget.ALL_POINTER_IDS;
-                    // Clean up earlier touch targets for this pointer id in case they
-                    // have become out of sync.
-                    removePointersFromTouchTargets(idBitsToAssign);
-
-                    final int childrenCount = mChildrenCount;
-                    if (newTouchTarget == null &amp;&amp; childrenCount != 0) {
-                        final float x = ev.getX(actionIndex);
-                        final float y = ev.getY(actionIndex);
-                        // Find a child that can receive the event.
-                        // Scan children from front to back.
-                        //一个ViewGroup会包含多个view，那么先找哪个子view去进行事件的传递呢？根据人的理解因该是最上层的view响应，那么这里先根据z轴的值进行排序
-                        //若是当前的子view中没有设置z轴的话，这里的preorderedList位null，这里就为null
-                        final ArrayList&lt;View&gt; preorderedList = buildTouchDispatchChildList();
-                        final boolean customOrder = preorderedList == null
-                                &amp;&amp; isChildrenDrawingOrderEnabled();
-                        final View[] children = mChildren;
-                        /**
-                        这里就是循环查找，从外往里扫描，可以理解为，一个ViewGroup中有多个子view，从布局中的后写的view开始扫描，因为在很多布局的设置中，后写的view会覆盖遮挡到前面的view，那么在上面的view应该是要先响应点击事件的
-                        */
-                        for (int i = childrenCount - 1; i &gt;= 0; i--) {
-                            //结合前面查到的z轴排序的结合获取view，这里的preorderedList是null，所以正常获取在child集合中的下标位置
-                            final int childIndex = getAndVerifyPreorderedIndex(
-                                    childrenCount, i, customOrder);
-                            final View child = getAndVerifyPreorderedView(
-                                    preorderedList, children, childIndex);
-
-                            // If there is a view that has accessibility focus we want it
-                            // to get the event first and if not handled we will perform a
-                            // normal dispatch. We may do a double iteration but this is
-                            // safer given the timeframe.
-                            //因为这里是ACTION_DOWN，第一次的循环还没走完childWithAccessibilityFocus为null
-                            if (childWithAccessibilityFocus != null) {
-                                if (childWithAccessibilityFocus != child) {
-                                    continue;
-                                }
-                                childWithAccessibilityFocus = null;
-                                i = childrenCount - 1;
-                            }
-                            //判断当前的child能否接受事件，并且按下的坐标点位于child区域内，只要一个不符合跳出循环，查找下一个view
-                            if (!canViewReceivePointerEvents(child)
-                                    || !isTransformedTouchPointInView(x, y, child, null)) {
-                                ev.setTargetAccessibilityFocus(false);
-                                continue;
-                            }
-                            /**
-                            这里是通过mFirstTouchTarget来对比，如果之前已经有view消费了事件，那么mFirstTouchTarget必定是不为null的，那么事件应该是第二根手指落下的事件，这里就是对比当前的view和mFirstTouchTarget中的view比较，如果是同一个view，就复用，只是把pointerIdBits更新下
-                            newTouchTarget为null，因为我们还没有view消费事件，mFirstTouchTarget还为null
-                            */
-                            newTouchTarget = getTouchTarget(child);
-                            if (newTouchTarget != null) {
-                                // Child is already receiving touch within its bounds.
-                                // Give it the new pointer in addition to the ones it is handling.
-                                newTouchTarget.pointerIdBits |= idBitsToAssign;
-                                break;
-                            }
-
-                            resetCancelNextUpFlag(child);
-                            //这里才是真正去分发事件的地方，也就是在这个方法里进行下一次递归
-                            if (dispatchTransformedTouchEvent(ev, false, child, idBitsToAssign)) {
-                                /**
-                                如果方法进入这里，说明子view消费了事件，当前的递归层级view为MyViewgrou，所以dispatchTransformedTouchEvent的向下调用就是，MyView的dipatchTouchEvent,MyView消费ACTION_DOWN事件，递归跳出，当前的ViewGroup就是MyViewGroup
-                                */
-                                // Child wants to receive touch within its bounds.
-                                mLastTouchDownTime = ev.getDownTime();
-                                if (preorderedList != null) {
-                                    // childIndex points into presorted list, find original index
-                                    for (int j = 0; j &lt; childrenCount; j++) {
-                                        if (children[childIndex] == mChildren[j]) {
-                                            mLastTouchDownIndex = j;
-                                            break;
-                                        }
-                                    }
-                                } else {
-                                    mLastTouchDownIndex = childIndex;
-                                }
-                                mLastTouchDownX = ev.getX();
-                                mLastTouchDownY = ev.getY();
-                                //这里就给mFirstTouchTarget设置值，也就是有事件消费的View了
-                                newTouchTarget = addTouchTarget(child, idBitsToAssign);
-                                //是否已经消费标志
-                                alreadyDispatchedToNewTouchTarget = true;
-                                //这的循环层级是在MyViewGroup中，找到消费的子view，就不再找了，跳出循环
-                                break;
-                            }
-
-                            // The accessibility focus didn't handle the event, so clear
-                            // the flag and do a normal dispatch to all children.
-                            ev.setTargetAccessibilityFocus(false);
-                        }
-                        if (preorderedList != null) preorderedList.clear();
-                    }
-
-                    if (newTouchTarget == null &amp;&amp; mFirstTouchTarget != null) {
-                        // Did not find a child to receive the event.
-                        // Assign the pointer to the least recently added target.
-                        newTouchTarget = mFirstTouchTarget;
-                        while (newTouchTarget.next != null) {
-                            newTouchTarget = newTouchTarget.next;
-                        }
-                        newTouchTarget.pointerIdBits |= idBitsToAssign;
-                    }
-                }
-            }
-            //已经有View消费事件了，mFirstTouchTarget不为null走else，相当于一个事件链中的事件都会交由一个view进行处理！！！
-            // Dispatch to touch targets.
-            if (mFirstTouchTarget == null) {
-                // No touch targets so treat this as an ordinary view.
-                //如果子view没有能消费的，那么就把事件分配给自己，看看自己能消费吗
-                handled = dispatchTransformedTouchEvent(ev, canceled, null,
-                        TouchTarget.ALL_POINTER_IDS);
-            } else {
-                // Dispatch to touch targets, excluding the new touch target if we already
-                // dispatched to it.  Cancel touch targets if necessary.
-                TouchTarget predecessor = null;
-                TouchTarget target = mFirstTouchTarget;
-                //因为上面的if没有走，所以alreadyDispatchedToNewTouchTarget为false，走else
-                while (target != null) {
-                    final TouchTarget next = target.next;
-                    if (alreadyDispatchedToNewTouchTarget &amp;&amp; target == newTouchTarget) {
-                        handled = true;
-                    } else {
-                        /**
-                        一般只有ViewGroup拦截了事件，cancelChild为true，同时之前消费事件的view会收到ACTION_CANCEL事件，
-                        这里的cancelChild为false
-                        */
-                        final boolean cancelChild = resetCancelNextUpFlag(target.child)
-                                || intercepted;
-                        //事件分发，可以看到target就是mFirstTouchTarget，还是之前响应事件的那个view
-                        if (dispatchTransformedTouchEvent(ev, cancelChild,
-                                target.child, target.pointerIdBits)) {
-                            handled = true;
-                        }
-                        if (cancelChild) {
-                            if (predecessor == null) {
-                                mFirstTouchTarget = next;
-                            } else {
-                                predecessor.next = next;
-                            }
-                            target.recycle();
-                            target = next;
-                            continue;
-                        }
-                    }
-                    predecessor = target;
-                    target = next;
-                }
-            }
-
-            // Update list of touch targets for pointer up or cancel, if needed.
-            if (canceled
-                    || actionMasked == MotionEvent.ACTION_UP
-                    || actionMasked == MotionEvent.ACTION_HOVER_MOVE) {
-                resetTouchState();
-            } else if (split &amp;&amp; actionMasked == MotionEvent.ACTION_POINTER_UP) {
-                final int actionIndex = ev.getActionIndex();
-                final int idBitsToRemove = 1 &lt;&lt; ev.getPointerId(actionIndex);
-                removePointersFromTouchTargets(idBitsToRemove);
-            }
-        }
-
-        if (!handled &amp;&amp; mInputEventConsistencyVerifier != null) {
-            mInputEventConsistencyVerifier.onUnhandledEvent(ev, 1);
-        }
-        //将结果返回给上一层调用者（父view，我们这里是MyViewGroup，它的父View是ConstraintLayout），之后的层层返回，跳出递归
-        return handled;
-    }
-</code></pre>
-<h3 id="dispatchtransformedtouchevent">dispatchTransformedTouchEvent</h3>
-<pre><code class="language-java">  /**
-    * 处理事件分发
-     * Transforms a motion event into the coordinate space of a particular child view,
-     * filters out irrelevant pointer ids, and overrides its action if necessary.
-     * If child is null, assumes the MotionEvent will be sent to this ViewGroup instead.
-     */
-    private boolean dispatchTransformedTouchEvent(MotionEvent event, boolean cancel,
-            View child, int desiredPointerIdBits) {
-        final boolean handled;
-
-        // Canceling motions is a special case.  We don't need to perform any transformations
-        // or filtering.  The important part is the action, not the contents.
-        //取消事件
-        final int oldAction = event.getAction();
-        if (cancel || oldAction == MotionEvent.ACTION_CANCEL) {
-            event.setAction(MotionEvent.ACTION_CANCEL);
-            if (child == null) {
-                handled = super.dispatchTouchEvent(event);
-            } else {
-                handled = child.dispatchTouchEvent(event);
-            }
-            event.setAction(oldAction);
-            return handled;
-        }
-
-        // Calculate the number of pointers to deliver.
-        //多点触控相关，oldPointerIdBits=1，desiredPointerIdBits=1，newPointerIdBits=1，说明事件不需要拆分，因为这里没有多点触控
-        final int oldPointerIdBits = event.getPointerIdBits();
-        final int newPointerIdBits = oldPointerIdBits &amp; desiredPointerIdBits;
-
-        // If for some reason we ended up in an inconsistent state where it looks like we
-        // might produce a motion event with no pointers in it, then drop the event.
-        if (newPointerIdBits == 0) {
-            return false;
-        }
-
-        // If the number of pointers is the same and we don't need to perform any fancy
-        // irreversible transformations, then we can reuse the motion event for this
-        // dispatch as long as we are careful to revert any changes we make.
-        // Otherwise we need to make a copy.
-        final MotionEvent transformedEvent;
-        if (newPointerIdBits == oldPointerIdBits) {
-            if (child == null || child.hasIdentityMatrix()) {
-                //入股当前的ViewGroup没有子view，调用父类dispatchTouchEvent方法，自己进行处理
-                if (child == null) {
-                    handled = super.dispatchTouchEvent(event);
-                } else {
-                    final float offsetX = mScrollX - child.mLeft;
-                    final float offsetY = mScrollY - child.mTop;
-                    event.offsetLocation(offsetX, offsetY);
-                    /**
-                    调用child的dispatchTouchEvent，进入下一层级的递归，如果child也是ViewGroup那么继续往下，直到有消费或找到最后层级的View
-                    */
-                    handled = child.dispatchTouchEvent(event);
-
-                    event.offsetLocation(-offsetX, -offsetY);
-                }
-                return handled;
-            }
-            transformedEvent = MotionEvent.obtain(event);
-        } else {
-            //这里是多点触控的
-            transformedEvent = event.split(newPointerIdBits);
-        }
-
-        // Perform any necessary transformations and dispatch.
-        //如果上面没有return，那么将转换后的transformedEvent再次分发
-        if (child == null) {
-            handled = super.dispatchTouchEvent(transformedEvent);
-        } else {
-            final float offsetX = mScrollX - child.mLeft;
-            final float offsetY = mScrollY - child.mTop;
-            transformedEvent.offsetLocation(offsetX, offsetY);
-            if (! child.hasIdentityMatrix()) {
-                transformedEvent.transform(child.getInverseMatrix());
-            }
-
-            handled = child.dispatchTouchEvent(transformedEvent);
-        }
-
-        // Done.
-        transformedEvent.recycle();
-        return handled;
-    }
-</code></pre>
-<p>事件分发就是通过dispatchTouchEvent，onInterceptTouchEvent onTouchEvent只不过是用来处理事件的，通过递归函数调用，来确定事件处理对象<br>
-分析前面的几个结论：<br>
-1.如果一个view在ACTION_DOWN时没有消费事件，那么同一事件序列之后的ACTION_MOVE ACTION_UP都不会交由此view处理<br>
-ViewGroup是通过mFirstTouchTarget来确定事件处理view的，如果没有事件处理，那么这个mFirstTouchTarget为null，ViewGroup就会自己来处理，例如上面的布局层级中，如果MyView<br>
-没有处理事件，MyViewGroup处理了相应的事件，那么在判断mFirstTouchTarget自己就处理了，这是在MyViewGroup消费事件的前提下，如果都没有View消费事件，那么这个会返回到DecorView,DecorView中的mFirstTouchTargte为null根本就不会再往下分发了。</p>
-<p>2.如果一个view在ACTION_DOWN时消费了事件，那么同一事件序列之后的ACTION_MOVE ACTION-UP都由此view处理<br>
-事件分发处理中如果mFirstTouchTarget不为null，那么就让分发到的就是mFirstTouchTarget</p>
-<p>3.如果一个ViewGroup在一定条件下，拦截了ACTION_MOVE事件，那么此前消费事件的子view会收到一个ACTION_CANCEL事件，同时onInteceptTouchEvent在此事件序列不会再调用</p>
-<h2 id="touchtarget源码分析">TouchTarget源码分析</h2>
-<p><a href="https://juejin.cn/post/6844904065613201421">ViewGroup事件分发总结-TouchTarget</a></p>
-<pre><code class="language-java">private static final class TouchTarget {
-    // ···
-
-    // 消费事件的view
-    @UnsupportedAppUsage
-    public View child;
-
-    // child接收的触摸点的id集合
-    public int pointerIdBits;
-
-    // 指向链表的下一个节点
-    public TouchTarget next;
-    
-    // ···
-}
-</code></pre>
-<p>根据TouchTarget来看ViewGroup整体的事件分发，整个流程中只有事件序列开始或子序列开始时（ACTION_DOW或ACTION_POINTER_DOWN），会遍历子view，并将目标封装成TouchTarget保存在mFirstTouchTarget链表中，完成派发目标查找后，再遍历TouchTarget链表，依次进行事件派发。</p>
-<h3 id="附加问题当viewgroup在action_move时满足一定条件拦截子view的事件为什么onintercepttouchevent一旦返回true就再也不会被调用"><strong>附加问题：当ViewGroup在ACTION_MOVE时，满足一定条件，拦截子View的事件，为什么onInterceptTouchEvent一旦返回true，就再也不会被调用？</strong></h3>
-<p>注意intercepted，如果onInterceptTouchEvent返回true，那么会导致cancelChild为true，那么mFirstTouchTarget会进行mFirstTouchTarget = next操作，因为是单点触控，next节点是null，所以mFirstTouchTarget就被赋值为null，再看onInterceptTouchEvent的调用时机</p>
-<pre><code class="language-java">  if (actionMasked == MotionEvent.ACTION_DOWN
-                    || mFirstTouchTarget != null) {
-                // 判断child是否抢先调用了requestDisallowInterceptTouchEvent方法
-                final boolean disallowIntercept = (mGroupFlags &amp; FLAG_DISALLOW_INTERCEPT) != 0;
-                if (!disallowIntercept) {
-                    //因为这里分析的是ViewGroup中的事件分发，所以就会有涉及到子view调用requestDisallowInterceptTouchEvent，设置事件拦截
-                    // 再通过onInterceptTouchEvent方法判断（子类可重写）
-                    intercepted = onInterceptTouchEvent(ev);
-                    ev.setAction(action); // restore action in case it was changed
-                } else {
-                    intercepted = false;
-                }
-            } else {
-                // There are no touch targets and this action is not an initial down
-                // so this view group continues to intercept touches.
-                //如果不是ACTION_DOWN，并且子view没有消费（mFirstTouchTarget为null），就直接拦截
-                intercepted = true;
-            }
-</code></pre>
-<p>后续的事件不会是ACTION_DOWN，并且mFirstTouchTarget为null了，这里就会走else逻辑，调用不到onInterceptTouchEvent方法了。</p>
 ]]></content>
     </entry>
 </feed>
