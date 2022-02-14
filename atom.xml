@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://arms-merchants.github.io/</id>
     <title>Arms-merchants</title>
-    <updated>2022-01-11T06:01:27.804Z</updated>
+    <updated>2022-02-14T01:25:11.943Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://arms-merchants.github.io/"/>
     <link rel="self" href="https://arms-merchants.github.io/atom.xml"/>
@@ -3012,7 +3012,7 @@ class NestedScrollableHost : FrameLayout {
         <link href="https://arms-merchants.github.io/post/viewpager-de-yuan-ma-fen-xi-todo/">
         </link>
         <updated>2021-11-25T01:28:14.000Z</updated>
-        <content type="html"><![CDATA[<p>这是在基于总的Fragment数量为5，并且第一次数据加载已经完成，从0的tab切换到2的tab的过程，limit为1，分析2的创建已经3的预加载，还有0的destory：</p>
+        <content type="html"><![CDATA[<p>这是在基于总的Fragment数量为5，并且第一次数据加载已经完成，从0的tab切换到2的tab的过程，limit为1，分析2的创建以及3的预加载，还有0的destory：</p>
 <pre><code class="language-java">    void populate(int newCurrentItem) {
         //newCurrentItem =2
         ViewPager.ItemInfo oldCurInfo = null;

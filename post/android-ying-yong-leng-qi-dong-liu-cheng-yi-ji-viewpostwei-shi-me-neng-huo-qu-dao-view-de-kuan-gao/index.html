@@ -3,7 +3,7 @@
     <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Android应用冷启动流程，以及view.post（）为什么能获取到view的宽高 | Arms-merchants</title>
-<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1641880879201">
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1644801908452">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
 <link rel="alternate" type="application/atom+xml" title="Android应用冷启动流程，以及view.post（）为什么能获取到view的宽高 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
@@ -23,7 +23,7 @@
       <div class="main-content">
         <div class="site-header">
   <a href="https://arms-merchants.github.io/">
-  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1641880879201" alt="">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1644801908452" alt="">
   </a>
   <h1 class="site-title">
     Arms-merchants
@@ -109,7 +109,7 @@
 <p>mStackSupervisor.attachApplicationLocked(app),最终调用到realStartActivityLocked()启动Activity</p>
 </li>
 </ol>
-<p><a href="https://luyao.tech/archives/startactivity">Activity启动流程</a></p>
+<p><a href="https://juejin.cn/post/6844904012974669837">庖丁解牛 Activity 启动流程</a></p>
 <pre><code class="language-java">&gt; ActivityThread.java
 
 private Activity performLaunchActivity(ActivityClientRecord r, Intent customIntent) {
@@ -302,6 +302,8 @@ public boolean post(Runnable action) {
 </ol>
 <p>根据 ViewRootImpl 是否已经创建，View.post() 会执行不同的逻辑。如果 ViewRootImpl 已经创建，即 mAttachInfo 已经初始化，直接通过 Handler 发送消息来执行任务。如果 ViewRootImpl 未创建，即 View 尚未开始绘制，会将任务保存为 HandlerAction，暂存在队列 HandlerActionQueue 中，等到 View 开始绘制，执行 performTraversal() 方法时，在 dispatchAttachedToWindow() 方法中通过 Handler 分发 HandlerActionQueue 中暂存的任务。<br>
 另外要注意，View 绘制是发生在一次 Meesage 处理过程中的，View.post() 执行的任务也是发生在一次 Message 处理过程中的，它们一定是有先后顺序的。</p>
+<h1 id="参考链接">参考链接：</h1>
+<p><a href="https://juejin.cn/post/6844904012974669837">庖丁解牛 Activity 启动流程</a></p>
 
               </div>
               <div class="toc-container">
@@ -312,6 +314,7 @@ public boolean post(Runnable action) {
 <li><a href="#2viewpost">2.view.post()</a></li>
 </ul>
 </li>
+<li><a href="#%E5%8F%82%E8%80%83%E9%93%BE%E6%8E%A5">参考链接：</a></li>
 </ul>
 
               </div>

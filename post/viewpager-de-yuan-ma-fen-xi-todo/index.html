@@ -3,7 +3,7 @@
     <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ViewPager的源码分析--TODO | Arms-merchants</title>
-<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1641880879201">
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1644801908452">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
 <link rel="alternate" type="application/atom+xml" title="ViewPager的源码分析--TODO | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
@@ -11,7 +11,7 @@
 
 
 
-    <meta name="description" content="这是在基于总的Fragment数量为5，并且第一次数据加载已经完成，从0的tab切换到2的tab的过程，limit为1，分析2的创建已经3的预加载，还有0的destory：
+    <meta name="description" content="这是在基于总的Fragment数量为5，并且第一次数据加载已经完成，从0的tab切换到2的tab的过程，limit为1，分析2的创建以及3的预加载，还有0的destory：
     void populate(int newCurrentI..." />
     <meta name="keywords" content="" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
@@ -22,7 +22,7 @@
       <div class="main-content">
         <div class="site-header">
   <a href="https://arms-merchants.github.io/">
-  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1641880879201" alt="">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1644801908452" alt="">
   </a>
   <h1 class="site-title">
     Arms-merchants
@@ -91,7 +91,7 @@
             
             <div class="post-content-wrapper">
               <div class="post-content">
-                <p>这是在基于总的Fragment数量为5，并且第一次数据加载已经完成，从0的tab切换到2的tab的过程，limit为1，分析2的创建已经3的预加载，还有0的destory：</p>
+                <p>这是在基于总的Fragment数量为5，并且第一次数据加载已经完成，从0的tab切换到2的tab的过程，limit为1，分析2的创建以及3的预加载，还有0的destory：</p>
 <pre><code class="language-java">    void populate(int newCurrentItem) {
         //newCurrentItem =2
         ViewPager.ItemInfo oldCurInfo = null;
