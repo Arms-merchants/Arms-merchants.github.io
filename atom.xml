@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://arms-merchants.github.io/</id>
     <title>Arms-merchants</title>
-    <updated>2022-02-22T09:34:00.078Z</updated>
+    <updated>2022-02-22T09:39:59.836Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://arms-merchants.github.io/"/>
     <link rel="self" href="https://arms-merchants.github.io/atom.xml"/>
@@ -209,6 +209,7 @@ ArrayMap是如何解决Hash碰撞的：</p>
         return ~end;
     }
 </code></pre>
+<p>所以相对于HashMap，这两者都是优化了内存空间的使用，因为HashMap是采用空间换时间的策略，只要到达75%的容量就会翻倍扩容，哪怕是只存储一个数据。</p>
 <p>位运算：</p>
 <ul>
 <li>&lt;&lt;: 左移运算符号： num&lt;&lt;1 ,相当于num乘以2</li>
