@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://arms-merchants.github.io/</id>
     <title>Arms-merchants</title>
-    <updated>2022-02-23T01:25:50.316Z</updated>
+    <updated>2022-03-15T07:48:47.435Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://arms-merchants.github.io/"/>
     <link rel="self" href="https://arms-merchants.github.io/atom.xml"/>
@@ -10,6 +10,281 @@
     <logo>https://arms-merchants.github.io/images/avatar.png</logo>
     <icon>https://arms-merchants.github.io/favicon.ico</icon>
     <rights>All rights reserved 2022, Arms-merchants</rights>
+    <entry>
+        <title type="html"><![CDATA[Kotlin反射]]></title>
+        <id>https://arms-merchants.github.io/post/kotlin-fan-she/</id>
+        <link href="https://arms-merchants.github.io/post/kotlin-fan-she/">
+        </link>
+        <updated>2022-03-15T07:26:22.000Z</updated>
+        <content type="html"><![CDATA[<p>kotlin可以直接使用java的反射，如果要使用kotlin的反射，那么需要单独引入kotlin的反射库</p>
+<pre><code class="language-java">implementation &quot;org.jetbrains.kotlin:kotlin-reflect&quot;  
+</code></pre>
+<p>那么这和Java对比的话有什么区别</p>
+<h2 id="java">Java</h2>
+<ul>
+<li>
+<p>优点：无需引入额外依赖，首次使用速度相对较快(这是因为它的信息都在虚拟机内)。</p>
+</li>
+<li>
+<p>缺点：无法访问Kotlin语法特性，需要对Kotlin生成的字节码足够了解(这是因为Kotlin程序编译完之后也是个Java类，所以在Java反射视角下看到的Kotlin编译的状态和一般Java类无异，这个时候如果要通过反射访问Kotlin类的一些方法属性，必须要知道它编译什么样的字节码)</p>
+</li>
+</ul>
+<h2 id="kotlin">kotlin</h2>
+<ul>
+<li>
+<p>优点：支持访问Kotlin几乎所有特性，API设计兼容性更好。</p>
+</li>
+<li>
+<p>缺点：额外引入了一个Kotlin反射库(这个库2.5M左右，编译后400KB)，首次调用会慢一些，这是因为Kotlin的反射信息是写到Metadata这个注解里面的(通过查看字节码可以看到，如下)，里面的数据通过Protobuf的数据格式序列化二进制写入，所以首次反射调用有一个获取注解并反序列化的过程)。</p>
+</li>
+</ul>
+<pre><code class="language-kotlin">
+@Metadata(
+   mv = {1, 6, 0},
+   k = 1,
+   d1 = {&quot;\u0000\u001a\n\u0002\u0018\u0002\n\u0000\n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0002\b\u0002\n\u0002\u0010\u0002\n\u0002\b\u0003\u0018\u0000*\n\b\u0000\u0010\u0001 \u0000*\u00020\u00022\u00020\u0003B\u0005¢\u0006\u0002\u0010\u0004J\u0013\u0010\u0005\u001a\u00020\u00062\u0006\u0010\u0007\u001a\u00028\u0000¢\u0006\u0002\u0010\b¨\u0006\t&quot;},
+   d2 = {&quot;Lcom/qisan/kotlinstu/Dustbin;&quot;, &quot;T&quot;, &quot;Lcom/qisan/kotlinstu/Waste;&quot;, &quot;&quot;, &quot;()V&quot;, &quot;put&quot;, &quot;&quot;, &quot;t&quot;, &quot;(Lcom/qisan/kotlinstu/Waste;)V&quot;, &quot;KotlinStu.app&quot;}
+)
+</code></pre>
+<h2 id="一些在kotlin反射中的常用api">一些在Kotlin反射中的常用Api:</h2>
+<pre><code class="language-java">        var cls: KClass&lt;String&gt; = String::class
+        //KClass转为java的Class&lt;String&gt;
+        var clsJava: Class&lt;String&gt; = cls.java
+        //java的Class&lt;String&gt;转为KClass
+        cls = clsJava.kotlin
+        //获取定义在String类的属性，返回的是Collections
+        val properties = cls.declaredMemberProperties
+        //返回这个类中的所有方法
+        cls.declaredFunctions
+        //返回这个类中的所有非静态非扩展的函数
+        cls.declaredMemberFunctions
+        //返回这个类中中的扩展函数,注意看下面的类A
+        cls.declaredMemberExtensionFunctions
+
+        cls.isAbstract//是否是抽象类
+        cls.isCompanion//是否是伴生对象
+        cls.nestedClasses//获取当前类的内部类
+        cls.objectInstance//如果是object，可以通过这个方法获取
+</code></pre>
+<h3 id="1declaredmemberextensionfunctions的式例">1.declaredMemberExtensionFunctions的式例</h3>
+<pre><code class="language-java">class A {
+
+    fun test(){
+        //这里的反射属性通过这个是可以获取到这个String.pass的扩展方法
+        A::class.declaredMemberExtensionFunctions
+        //但是通过String是获取不到
+        String::class.declaredMemberExtensionFunctions
+        &quot;&quot;.pass()
+    }
+
+    fun String.pass(){
+    }
+}
+</code></pre>
+<p>在A的扩展函数中能够获取到String.pass的扩展方法，但是String::class.declaredMemberExtensionFunctions是没有的，而在顶级的扩展函数中是构建成静态方法的.</p>
+<pre><code class="language-java">fun String.pass() {
+    println(&quot;test&quot;)
+}
+//ktx.kt 对应到的java代码
+@Metadata(
+   mv = {1, 6, 0},
+   k = 2,
+   d1 = {&quot;\u0000\f\n\u0000\n\u0002\u0010\u0002\n\u0002\u0010\u000e\n\u0000\u001a\n\u0010\u0000\u001a\u00020\u0001*\u00020\u0002¨\u0006\u0003&quot;},
+   d2 = {&quot;pass&quot;, &quot;&quot;, &quot;&quot;, &quot;Arount.app&quot;}
+)
+public final class KtxKt {
+   public static final void pass(@NotNull String $this$pass) {
+      Intrinsics.checkNotNullParameter($this$pass, &quot;$this$pass&quot;);
+      String var1 = &quot;test&quot;;
+      System.out.println(var1);
+   }
+}
+</code></pre>
+<h3 id="2ktype的获取">2.KType的获取</h3>
+<pre><code class="language-java">   fun testKType(){
+        val mapType = typeOf&lt;Map&lt;String,Int&gt;&gt;()
+        mapType.arguments.forEach {
+            print(it)
+        }
+        /**
+         * 输出结果：
+         * kotlin.String
+         * kotlin.Int
+         * KType可以找到泛型实参
+         */
+    }
+</code></pre>
+<h3 id="3获取接口方法的返回的泛型实例参数类型">3.获取接口方法的返回的泛型实例参数类型</h3>
+<pre><code class="language-java">interface Api{
+    fun getUsers():List&lt;UserModel&gt;
+}
+
+data class UserModel(var id:Int,var name:String)
+
+fun testGetFunParamsType(){
+        Api::class.declaredFunctions.first { it.name == &quot;getUsers&quot; }
+            .returnType.arguments.forEach {
+                print(it)
+            }
+        //两者相同
+        Api::getUsers.returnType.arguments.forEach {
+            print(it)
+        }
+    }
+</code></pre>
+<h3 id="4获取实例对象上的泛型约束类型">4.获取实例对象上的泛型约束类型</h3>
+<pre><code class="language-java">abstract class SuperType&lt;T&gt;{
+    val typeParameter by lazy {
+        //this表示的是子类的实例，因为抽象类不能用于创建实例，只能背当做父类被子类继承
+        this::class.supertypes.first().arguments.first().type
+        //如果有多个子类继承 比如class SubType2:SubType(){} 
+        //这个时候this::class.supertype会空，因为SubType没有泛型实参这时候要使用：
+        this::class.allSupertypes.first().arguments.first().type
+    }
+}
+
+open class SubType:SuperType&lt;String&gt;()
+
+class SubType2:SubType()
+
+fun testGetParentType(){
+    val subType = SubType()
+    subType.typeParameter.let {
+        print(it)
+        //kotlin.String
+    }
+}
+</code></pre>
+<h2 id="场景引用-深层拷贝">场景引用-深层拷贝</h2>
+<pre><code class="language-java">    data class Person(val id: Int, val name: String, val group: Group)
+    data class Group(val id: Int, val name: String)
+
+/**
+ * 深层数据拷贝
+ */
+fun &lt;T:Any&gt; T.deepCopy():T{
+    if(!this::class.isData){
+        return this
+    }
+    return this::class.primaryConstructor!!.let { primaryConstructor-&gt;
+        primaryConstructor.parameters.associate { parameter -&gt;
+            val value =
+                (this::class as KClass&lt;T&gt;).memberProperties.first { it.name == parameter.name }
+                    .get(this)
+            if ((parameter.type.classifier as? KClass&lt;*&gt;)?.isData == true) {
+                parameter to value?.deepCopy()
+            } else {
+                parameter to value
+            }
+        }
+            .let {
+                primaryConstructor.callBy(it)
+                //primaryConstructor是KFunction&lt;T&gt;类型 KFunction&lt;T&gt;里面有callBy方法 只要传一个map，返回调用者的参数类型T
+            }
+    }
+}
+
+    private fun testCopy() {
+        val group = Group(1, &quot;11111&quot;)
+        val person = Person(1, &quot;haha&quot;, group)
+        //浅层拷贝实际上就是new了一个新的对象，并将当前类的属性传入，那么group就传入的是同一个了
+        val copyPerson = person.copy()
+        //也就是说通过copy的方法，实现的拷贝中group还是指向的同一个，那么相应的修改就会造成同步的修改
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, (person === copyPerson).toString()) //false
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, (person.group === copyPerson.group).toString()) //true
+
+        //深层拷贝的第一次是真的慢
+        val startTime = System.currentTimeMillis()
+        val deepCope = person.deepCopy()
+        val endTime = System.currentTimeMillis()
+
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, &quot;cost time:${endTime - startTime}&quot;)
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, (person === deepCope).toString()) //false
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, (person.group === deepCope.group).toString()) //false
+    }
+</code></pre>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[ANR以及电量优化]]></title>
+        <id>https://arms-merchants.github.io/post/anr-yi-ji-dian-liang-you-hua/</id>
+        <link href="https://arms-merchants.github.io/post/anr-yi-ji-dian-liang-you-hua/">
+        </link>
+        <updated>2022-03-01T01:07:44.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="app启动优化分析"><a href="https://mp.weixin.qq.com/s/_8ZzgmmP4Ov66f42sBHslA">App启动优化分析</a></h1>
+<h2 id="1anr是什么">1.ANR是什么？</h2>
+<p>ANR(Application Not Responding)程序未响应，Android系统中如果在预定的时间内未得到有效的响应或响应时间过长，都会产生ANR，程序的响应性由ActivityManager和WindowManager系统服务监视。</p>
+<h2 id="2anr的产生原因">2.ANR的产生原因？</h2>
+<ul>
+<li>对于前台服务，则超时为SERVICE_TIMEOUT = 20s；</li>
+<li>对于后台服务，则超时为SERVICE_BACKGROUND_TIMEOUT = 200s</li>
+<li>对于前台广播，则超时为BROADCAST_FG_TIMEOUT = 10s；</li>
+<li>对于后台广播，则超时为BROADCAST_BG_TIMEOUT = 60s;</li>
+<li>ContentProvider超时为CONTENT_PROVIDER_PUBLISH_TIMEOUT = 10s;</li>
+<li>InputDispatching Timeout: 输入事件分发超时5s，包括按键和触摸事件。</li>
+</ul>
+<p><code>注意事项: Input的超时机制与其他的不同，对于input来说即便某次事件执行时间超过timeout时长，只要用户后续在没有再生成输入事件，则不会触发ANR</code></p>
+<ul>
+<li>
+<p>Service超时检测机制：</p>
+<ul>
+<li>超过一定时间没有执行完相应操作来触发移除延时消息，则会触发anr;</li>
+</ul>
+</li>
+<li>
+<p>BroadcastReceiver超时检测机制：</p>
+<ul>
+<li>有序广播的总执行时间超过 2* receiver个数 * timeout时长，则会触发anr;<br>
+有序广播的某一个receiver执行过程超过 timeout时长，则会触发anr;</li>
+</ul>
+</li>
+<li>
+<p>另外:</p>
+<ul>
+<li>对于Service, Broadcast, Input发生ANR之后,最终都会调用AMS.appNotResponding;</li>
+<li>对于provider,在其进程启动时publish过程可能会出现ANR, 则会直接杀进程以及清理相应信息,而不会弹出ANR的对话框</li>
+</ul>
+</li>
+</ul>
+<h2 id="3anr的定位分析">3.ANR的定位分析</h2>
+<ol>
+<li>前台ANR发生后，系统会马上去抓取现场的信息，用于调试分析，收集的信息如下:</li>
+</ol>
+<ul>
+<li>将am_anr信息输出到EventLog，也就是说ANR触发的时间点最接近的就是EventLog中输出的am_anr信息</li>
+<li>收集以下重要进程的各个线程调用栈trace信息，保存在data/anr/traces.txt文件
+<ul>
+<li>当前发生ANR的进程，system_server进程以及所有persistent进程</li>
+<li>audioserver, cameraserver, mediaserver, surfaceflinger等重要的native进程</li>
+<li>CPU使用率排名前5的进程</li>
+</ul>
+</li>
+<li>将发生ANR的reason以及CPU使用情况信息输出到main log</li>
+<li>将traces文件和CPU使用情况信息保存到dropbox，即data/system/dropbox目录</li>
+<li>对用户可感知的进程则弹出ANR对话框告知用户，对用户不可感知的进程发生ANR则直接杀掉</li>
+</ul>
+<ol start="2">
+<li>分析步骤
+<ol>
+<li>定位发生ANR时间点</li>
+<li>查看trace信息</li>
+<li>分析是否有耗时的message,binder调用，锁的竞争，CPU资源的抢占</li>
+<li>结合具体的业务场景的上下文来分析</li>
+</ol>
+</li>
+</ol>
+<h2 id="4电量优化工具">4.电量优化工具</h2>
+<pre><code>Profiler - NetWork(网络分析),CPU（CPU使用分析，查看当前CPU运行的状态，判断卡顿发生时的状态）,Memory（内存使用分析，内存抖动，内存泄漏，OOM的分析）
+</code></pre>
+<h2 id="5电量优化方案">5.电量优化方案</h2>
+<p>减少操作，例如数据下载是否每次都需要去更新最新的数据，是否有缓存的必要。<br>
+推迟操作，一些耗电操作是否在特定的状态下（电量满或者充电状态下）进行，例如持续的定位<br>
+合并操作<br>
+DNS的优化：HTTPDNS，可以接入三方提供的dns解析，<a href="https://help.aliyun.com/product/30100.html"><code>阿里云HTTPDNS</code></a><br>
+数据压缩：Ptotobuf</p>
+<h3 id="阿里mavne"><a href="https://developer.aliyun.com/mvn/view"><code>阿里Mavne</code></a></h3>
+]]></content>
+    </entry>
     <entry>
         <title type="html"><![CDATA[常用的数据结构分析]]></title>
         <id>https://arms-merchants.github.io/post/chang-yong-de-shu-ju-jie-gou-fen-xi/</id>
@@ -3388,503 +3663,6 @@ class NestedScrollableHost : FrameLayout {
                     }
                 }
             }
-        }
-    }
-</code></pre>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[Android一键打包上传蒲公英并发送消息到企业微信]]></title>
-        <id>https://arms-merchants.github.io/post/android-yi-jian-da-bao-shang-chuan-pu-gong-ying-bing-fa-song-xiao-xi-dao-qi-ye-wei-xin-todo/</id>
-        <link href="https://arms-merchants.github.io/post/android-yi-jian-da-bao-shang-chuan-pu-gong-ying-bing-fa-song-xiao-xi-dao-qi-ye-wei-xin-todo/">
-        </link>
-        <updated>2021-11-12T07:52:58.000Z</updated>
-        <content type="html"><![CDATA[<p>实现一键打包上传蒲公英并发送消息到企业微信，涉及到的点就是使用HttpURLConnection来进行数据的传输，两个gradle中方法的调用，以及企业微信api和蒲公英上传api的调用:</p>
-<h2 id="1上传蒲公英的文件">1.上传蒲公英的文件</h2>
-<pre><code class="language-java">import groovy.json.JsonSlurper
-//需要通过这种方式才能去调用给到另外一个gradle中的方法，调用的也不是直接去调用给，也是通过ext中的方法函数调用
-apply([plugin: 'com.android.application', from: project.uri(file(&quot;../packapk/send_message.gradle&quot;))])
-
-afterEvaluate {
-    android.applicationVariants.each { variant -&gt;
-        String variantName = variant.name.capitalize()
-        def task = tasks.create(&quot;apkUploadPGY${variantName}&quot;)
-        task.group = &quot;apk_upload&quot;
-        //依赖微信混淆打包
-        task.dependsOn(&quot;resguard${variantName}&quot;)
-        task.doLast {
-            def currentBuildType = variant.buildType
-            def changeLogPath = new File(project.rootDir, 'packapk/apk_changelog').path
-            def apkFileDir = new File(
-                    project.buildDir,
-                    &quot;outputs/apk/${variant.flavorName}/${variant.buildType.name}&quot;)
-            def uploadFile = findApkFile(apkFileDir)
-            if (uploadFile == null || !uploadFile.exists()) {
-                throw new GradleException(&quot;Could not find apk!&quot;)
-            }
-            def appName = currentBuildType.getManifestPlaceholders()[&quot;APP_NAME&quot;]
-            def appUploadLog = currentBuildType.getManifestPlaceholders()[&quot;APK_UPLOAD_LOG&quot;]
-            def pgyToken = currentBuildType.getManifestPlaceholders()[&quot;PGY_TOKEN&quot;]
-            def wxPushToke = project.QYWX_ROBOT_KEY
-            def versionCode = project.android.defaultConfig.versionName
-            println(&quot;*********** start: uploadFile:${uploadFile.path} ******&quot;)
-            def uploadApkUrl = uploadApk(uploadFile, pgyToken, appName + appUploadLog)
-            if (uploadApkUrl != null) {
-                project.ext.fun.call(wxPushToke, changeLogPath, appName, versionCode, appUploadLog, uploadApkUrl)
-            }
-            println(&quot;*********** end: uploadFile ******&quot;)
-        }
-    }
-}
-
-/*def findApkFile(File apkFile) {
-    println(&quot;apkFile:&quot; + apkFile.name)
-    if (apkFile.isDirectory()) {
-        def files = apkFile.listFiles()
-        for (int i = 0; i &lt; files.length; i++) {
-            def findFile = findApkFile(files[i])
-            if (findFile != null) {
-                return findFile
-            }
-        }
-    } else if (apkFile.name.endsWith(&quot;.apk&quot;)) {
-        return apkFile
-    } else {
-        return null
-    }
-}*/
-
-/**
- * 查找apk文件，上面的方法因为我们项目中使用了资源混淆的处理，会导致在内层还有一个apk文件，所以这里直接找第一层的，根据需要修改使用方法即可
- * @param apkFile
- * @return
- */
-static def findApkFile(File apkFile) {
-    def files = apkFile.listFiles()
-    for (int i = 0; i &lt; files.length; i++) {
-        if (files[i].name.endsWith(&quot;.apk&quot;)) {
-            return files[i]
-        }
-    }
-    return null
-}
-
-def uploadApk(File uploadApkFile, String apiKey, String titleName) {
-    // 查找上传的 apk 文件, 这里需要换成自己 apk 路径
-    println(&quot;uploadApk:&quot; + uploadApkFile.absolutePath + &quot;--&quot; + uploadApkFile.exists())
-    if (uploadApkFile == null || !uploadApkFile.exists()) {
-        throw new RuntimeException(&quot;apk file not exists!&quot;)
-    }
-    println &quot;*************** upload start ***************&quot;
-    String BOUNDARY = UUID.randomUUID().toString(); // 边界标识 随机生成
-    String PREFIX = &quot;--&quot;, LINE_END = &quot;\r\n&quot;;
-    String CONTENT_TYPE = &quot;multipart/form-data&quot;; // 内容类型
-    try {
-        URL url = new URL(&quot;https://www.pgyer.com/apiv2/app/upload&quot;);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setReadTimeout(30000);
-        conn.setConnectTimeout(30000);
-        conn.setDoInput(true); // 允许输入流
-        conn.setDoOutput(true); // 允许输出流
-        conn.setUseCaches(false); // 不允许使用缓存
-        conn.setRequestMethod(&quot;POST&quot;); // 请求方式
-        conn.setRequestProperty(&quot;Charset&quot;, &quot;UTF-8&quot;); // 设置编码
-        conn.setRequestProperty(&quot;connection&quot;, &quot;keep-alive&quot;);
-        conn.setRequestProperty(&quot;Content-Type&quot;, CONTENT_TYPE + &quot;;boundary=&quot; + BOUNDARY);
-        DataOutputStream dos = new DataOutputStream(conn.getOutputStream());
-
-        StringBuffer sb = new StringBuffer();
-        sb.append(PREFIX).append(BOUNDARY).append(LINE_END);//分界符
-        sb.append(&quot;Content-Disposition: form-data; name=\&quot;&quot; + &quot;_api_key&quot; + &quot;\&quot;&quot; + LINE_END);
-        sb.append(&quot;Content-Type: text/plain; charset=UTF-8&quot; + LINE_END);
-        //sb.append(&quot;Content-Transfer-Encoding: 8bit&quot; + LINE_END);
-        sb.append(LINE_END);
-        sb.append(apiKey);//替换成你再蒲公英上申请的apiKey
-        sb.append(LINE_END);//换行！
-        //添加备注说明更新
-        sb.append(PREFIX).append(BOUNDARY).append(LINE_END);//分界符
-        sb.append(&quot;Content-Disposition: form-data; name=\&quot;&quot; + &quot;buildUpdateDescription&quot; + &quot;\&quot;&quot; + LINE_END);
-        sb.append(&quot;Content-Type: text/plain; charset=UTF-8&quot; + LINE_END);
-        //sb.append(&quot;Content-Transfer-Encoding: 8bit&quot; + LINE_END);
-        sb.append(LINE_END);
-        sb.append(titleName);//替换成你再蒲公英上申请的apiKey
-        sb.append(LINE_END);//换行！
-
-        if (uploadApkFile != null) {
-            /**
-             * 当文件不为空，把文件包装并且上传
-             */
-            sb.append(PREFIX);
-            sb.append(BOUNDARY);
-            sb.append(LINE_END);
-            /**
-             * 这里重点注意： name里面的值为服务器端需要key 只有这个key 才可以得到对应的文件
-             * filename是文件的名字，包含后缀名的 比如:abc.png
-             */
-            sb.append(&quot;Content-Disposition: form-data; name=\&quot;file\&quot;; filename=\&quot;&quot; + uploadApkFile.getName() + &quot;\&quot;&quot; + LINE_END);
-            sb.append(&quot;Content-Type: application/octet-stream; charset=UTF-8&quot; + LINE_END);
-            sb.append(LINE_END);
-            dos.write(sb.toString().getBytes())
-
-            InputStream is = new FileInputStream(uploadApkFile)
-            byte[] bytes = new byte[1024];
-            int len = 0;
-            while ((len = is.read(bytes)) != -1) {
-                dos.write(bytes, 0, len);
-            }
-            is.close();
-            dos.write(LINE_END.getBytes());
-            byte[] end_data = (PREFIX + BOUNDARY + PREFIX + LINE_END).getBytes();
-            dos.write(end_data);
-            dos.flush();
-            /**
-             * 获取响应码 200=成功 当响应成功，获取响应的流
-             */
-            int res = conn.getResponseCode();
-            if (res == 200) {
-                println(&quot;Upload request success&quot;);
-                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))
-                StringBuffer ret = new StringBuffer();
-                String line
-                while ((line = br.readLine()) != null) {
-                    ret.append(line)
-                }
-                String result = ret.toString();
-                println(&quot;Upload result : &quot; + result);
-
-                def resp = new JsonSlurper().parseText(result)
-                println result
-                println &quot;------url:https://www.pgyer.com/${resp.data.buildShortcutUrl}&quot;
-                println &quot;*************** upload finish ***************&quot;
-                return &quot;https://www.pgyer.com/${resp.data.buildShortcutUrl}&quot;
-            } else {
-                println &quot;Upload request fail&quot;
-            }
-        }
-    } catch (MalformedURLException e) {
-        e.printStackTrace();
-    } catch (IOException e) {
-        e.printStackTrace();
-    }
-    return null
-}
-</code></pre>
-<h2 id="2企业微信消息的发送">2.企业微信消息的发送</h2>
-<p>这里需要在对应的群创建一个机器人，然后通过这个机器人进行消息的发送<br>
-其中的apk_chanagelog为一个自定义的文件，记录了当前版本更新的内容，这个内容后续会读取到企业微信发送消息中，告知相应的人员修改的内容：<br>
-seng_message.gradle：</p>
-<pre><code class="language-java">import groovy.json.JsonBuilder
-
-def sendMessage={
-    wxPushToken,changeLogPath, appName,versionCode, uploadType, pgyUrl-&gt;
-        //消息组成，Android+项目名称 +环境：url
-        //更新日志
-        if(wxPushToken == null){
-            println(&quot;企业微信推送的token为空&quot;)
-            return
-        }
-        def change_log = &quot;&quot;
-        File file = new File(changeLogPath)
-        def result = new StringBuilder()
-        if (file.exists()) {
-            try {
-                //按行读取changelog的内容进行拼接
-                BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(file), &quot;UTF-8&quot;))
-                def lineContent
-                while ((lineContent = br.readLine()) != null) {
-                    result.append(System.lineSeparator() + lineContent)
-                }
-                br.close()
-                change_log = result.toString()
-            } catch (Exception e) {
-                e.printStackTrace()
-            }
-        }
-        URL url = new URL(&quot;https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${wxPushToken}&quot;);
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setReadTimeout(30000);
-        conn.setConnectTimeout(30000);
-        conn.setDoInput(true); // 允许输入流
-        conn.setDoOutput(true); // 允许输出流
-        conn.setUseCaches(false); // 不允许使用缓存
-        conn.setRequestMethod(&quot;POST&quot;); // 请求方式
-        conn.setRequestProperty(&quot;Content-Type&quot;, &quot;application/json;charset=utf-8&quot;);
-        conn.connect();
-        //groovy的语法进行Json相关的操作，这里是构建json字符串
-        def json = new JsonBuilder()
-        json {
-            msgtype &quot;text&quot;
-            text {
-                content &quot;${appName}-Android${versionCode}${uploadType}:\n${pgyUrl}\n${change_log}&quot;
-            }
-        }
-        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(conn.getOutputStream(), &quot;UTF-8&quot;));
-        println(json.toString())
-        writer.write(json.toString());
-        writer.flush();
-        int res = conn.getResponseCode();
-        if (res == 200) {
-            println(&quot;消息发送成功&quot;);
-        } else {
-            println (&quot;消息发送失败&quot;)
-        }
-}
-//创建一个ext的函数方法对象提供给外部使用
-ext{
-    fun = sendMessage
-}
-</code></pre>
-<h2 id="3参数配置">3.参数配置</h2>
-<p>参数的配置，其中使用到的参数包括PGY_TOKEN（蒲公英的上传token），APK_UPLOAD_LOG（版本的区分标示），APP_NAME（应用名称）</p>
-<pre><code class="language-java">buildTypes{
-    release{
-        manifestPlaceholders=[
-            PGY_TOKEN : &quot;${project.PGY_APPID_RELEASE}&quot;,
-            APK_UPLOAD_LOG : &quot;生产&quot;,
-            APP_NAME:&quot;APP&quot;,
-        ]
-    }
-     debug{
-        manifestPlaceholders=[
-            PGY_TOKEN : &quot;${project.PGY_APPID_RELEASE}&quot;,
-            APK_UPLOAD_LOG : &quot;测试&quot;,
-            APP_NAME:&quot;APP&quot;,
-        ]
-    }
-}
-</code></pre>
-<p>在项目的gradle.properties中的配置:</p>
-<pre><code class="language-java">######上传蒲公英的TOKEN
-#蒲公英测试环境的token
-PGY_APPID_TEST=
-#蒲公英正式环境的token
-PGY_APPID_RELEASE=
-
-######微信机器人消息发送
-QYWX_ROBOT_KEY = 
-</code></pre>
-<p>消息拼接格式：<br>
-&quot;<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mrow><mi>a</mi><mi>p</mi><mi>p</mi><mi>N</mi><mi>a</mi><mi>m</mi><mi>e</mi></mrow><mo>−</mo><mi>A</mi><mi>n</mi><mi>d</mi><mi>r</mi><mi>o</mi><mi>i</mi><mi>d</mi></mrow><annotation encoding="application/x-tex">{appName}-Android</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8777699999999999em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">a</span><span class="mord mathdefault">p</span><span class="mord mathdefault">p</span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="mord mathdefault">a</span><span class="mord mathdefault">m</span><span class="mord mathdefault">e</span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">A</span><span class="mord mathdefault">n</span><span class="mord mathdefault">d</span><span class="mord mathdefault" style="margin-right:0.02778em;">r</span><span class="mord mathdefault">o</span><span class="mord mathdefault">i</span><span class="mord mathdefault">d</span></span></span></span>{versionCode}<span class='katex-error' title='ParseError: KaTeX parse error: Undefined control sequence: \n at position 14: {uploadType}:\̲n̲'>{uploadType}:\n</span>{pgyUrl}\n${change_log}&quot;<br>
-名称-Android版本类别：<br>
-蒲公英的路径<br>
-更新日志内容</p>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[在源码分析的基础上进行滑动冲突的解决]]></title>
-        <id>https://arms-merchants.github.io/post/zai-ji-ben-yuan-ma-fen-xi-de-ji-chu-shang-jin-xing-hua-dong-chong-tu-de-jie-jue/</id>
-        <link href="https://arms-merchants.github.io/post/zai-ji-ben-yuan-ma-fen-xi-de-ji-chu-shang-jin-xing-hua-dong-chong-tu-de-jie-jue/">
-        </link>
-        <updated>2021-11-08T15:13:44.000Z</updated>
-        <content type="html"><![CDATA[<p>根据前面进行的事件分发的源码分析，现在我们进行滑动冲突的解决。事件的冲突是只发生在ACTION_MOVE中的，根据解决冲突位置的不同，可以有两种解决方案:<br>
-在处理冲突之前，先回顾一下ViewGroup中事件分发中拦截的流程：</p>
-<pre><code class="language-java">  // Check for interception.
-            //是否拦截
-            final boolean intercepted;
-            if (actionMasked == MotionEvent.ACTION_DOWN
-                    || mFirstTouchTarget != null) {
-                        /**子view调用requestDisallowInterceptTouchEvent来修改是否允许拦截，如果不允许拦截的话，会进入if，
-                        这个时候就要看ViewGroup的onInterceptTouchEvent的值返回是什么,但是事件的分发是在子View之前，
-                        ACTION_DOWN的时候会重置mGroupFlags为   mGroupFlags &amp;= ~FLAG_DISALLOW_INTERCEPT;所以disallowIntercept为false会走if的判断，需要父布局处理dowan的事件拦截判断。*/
-                final boolean disallowIntercept = (mGroupFlags &amp; FLAG_DISALLOW_INTERCEPT) != 0;
-                if (!disallowIntercept) {
-                    intercepted = onInterceptTouchEvent(ev);
-                    ev.setAction(action); // restore action in case it was changed
-                } else {
-                    intercepted = false;
-                }
-            } else {
-                /**如果是拦截的话，第一次的move只会重置相应的事件，mFirstTouchTarget置为null，并且会给子view发一个ACTION_CANCEL的事件，
-                这里就相应之前的说法，子View的ACTION_CANCEL事件只有在父布局拦截的时候会触发，拦截后下面会走dispatchTransformedTouchEvent自己进行处理*/
-                // There are no touch targets and this action is not an initial down
-                // so this view group continues to intercept touches.
-                intercepted = true;
-            }
-</code></pre>
-<p>所以整个冲突的解决思路就是要在合适的时候让合适的对象去处理事件，并且这里处理的原则是在同一个事件链中只相应一个方向的事件，例如ViewPage嵌套ListView，这里会有两个方向的滑动，也就是在响应Viewpage横向事件时，不再响应ListView的竖向的事件，反之亦然。</p>
-<h1 id="第一种内部解决">第一种:内部解决</h1>
-<p>内部结局也就是子控件来控制整个流程中应该由谁来响应事件，是子View自己来处理事件还是父布局来进行拦截（拦截也就是由父布局进行事件的处理）。<br>
-因为ViewGroup的事件分发中的事件链第一个ACTION_DOWN会查找能够响应事件的view，所以我们需要保证在ACTION_DOWN时子view调用requestDisallowInterceptTouchEvent(true)来请求时，ViewGroup的onInterceptTouchEvent要返回false。</p>
-<h2 id="父布局">父布局：</h2>
-<pre><code class="language-java">    @Override
-    public boolean onInterceptTouchEvent(MotionEvent event) {
-        if (event.getAction() == MotionEvent.ACTION_DOWN){
-            super.onInterceptTouchEvent(event);
-            //在ACTION_DOWN时要拦截事件
-            return false;
-        }
-        return true;
-    }
-</code></pre>
-<h2 id="子view">子View：</h2>
-<pre><code class="language-java">  //内部拦截法：子view处理事件冲突
-    private int mLastX, mLastY;
-    @Override
-    public boolean dispatchTouchEvent(MotionEvent event) {
-        int x = (int) event.getX();
-        int y = (int) event.getY();
-
-        switch (event.getAction()) {
-            case MotionEvent.ACTION_DOWN: {
-                Log.e(&quot;======&quot;, &quot;ACTION_DOWN&quot;);
-                // mGroupFlags |= FLAG_DISALLOW_INTERCEPT;
-                //之后mGroupFlags &amp; FLAG_DISALLOW_INTERCEPT
-                getParent().requestDisallowInterceptTouchEvent(true);
-                break;
-            }
-            case MotionEvent.ACTION_MOVE: {
-                int deltaX = x - mLastX;
-                int deltaY = y - mLastY;
-                //这里就是如果横向事件满足那么直接进行拦截不再响应事件
-                if (Math.abs(deltaX) &gt; Math.abs(deltaY)) {
-                    Log.e(&quot;======&quot;, &quot;requestDisallowInterceptTouchEvent false&quot;);
-                    getParent().requestDisallowInterceptTouchEvent(false);
-                }
-                break;
-            }
-            case MotionEvent.ACTION_UP: {
-
-                break;
-            }
-            default:
-                break;
-        }
-        mLastX = x;
-        mLastY = y;
-        return super.dispatchTouchEvent(event);
-    }
-</code></pre>
-<h1 id="第二种外部处理">第二种:外部处理</h1>
-<p>也就是父布局进行事件判断，当前是否分发给子View<br>
-父布局：</p>
-<pre><code class="language-java">    // 外部拦截法：父容器处理冲突
-    // 我想要把事件分发给谁就分发给谁
-    @Override
-    public boolean onInterceptTouchEvent(MotionEvent event) {
-        int x = (int) event.getX();
-        int y = (int) event.getY();
-        switch (event.getAction()) {
-            case MotionEvent.ACTION_DOWN: {
-                mLastX = (int) event.getX();
-                mLastY = (int) event.getY();
-                break;
-            }
-            case MotionEvent.ACTION_MOVE: {
-                int deltaX = x - mLastX;
-                int deltaY = y - mLastY;
-                //横向移动距离大于竖向移动距离，那么拦截事件不再分发
-                if (Math.abs(deltaX) &gt; Math.abs(deltaY)) {
-                    return true;
-                }
-                break;
-            }
-            case MotionEvent.ACTION_UP: {
-                break;
-            }
-            default:
-                break;
-        }
-        return super.onInterceptTouchEvent(event);
-    }
-</code></pre>
-<hr>
-<p>针对一个实际🌰进行处理</p>
-<pre><code class="language-java">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
-&lt;android.support.constraint.ConstraintLayout xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;
-    xmlns:app=&quot;http://schemas.android.com/apk/res-auto&quot;
-    android:layout_width=&quot;match_parent&quot;
-    android:layout_height=&quot;match_parent&quot;
-    app:layout_constraintLeft_toLeftOf=&quot;parent&quot;
-    app:layout_constraintRight_toRightOf=&quot;parent&quot;&gt;
-
-    &lt;com.enjoy.srl_vp.SwipeRefreshLayout
-        android:id=&quot;@+id/swipeRefreshLayout&quot;
-        android:layout_width=&quot;match_parent&quot;
-        android:layout_height=&quot;match_parent&quot;&gt;
-
-        &lt;com.enjoy.srl_vp.ViewPager
-            android:id=&quot;@+id/viewPager&quot;
-            android:layout_width=&quot;match_parent&quot;
-            android:layout_height=&quot;match_parent&quot; /&gt;
-
-    &lt;/com.enjoy.srl_vp.SwipeRefreshLayout&gt;
-
-&lt;/android.support.constraint.ConstraintLayout&gt;
-</code></pre>
-<p>一个外层布局是SwipeRefreshLayout,内部ViewPage，ViewPage内部为Fragemnt<br>
-外部解决方案：</p>
-<pre><code class="language-java">    override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
-       if(ev != null){
-           when(ev.action){
-               MotionEvent.ACTION_DOWN-&gt;{
-                   mLastX = ev.x.toInt()
-                   mLastY = ev.y.toInt()
-               }
-               MotionEvent.ACTION_MOVE-&gt;{
-                   val delX = ev.x - mLastX
-                   val delY = ev.y-mLastY
-                   //横向滑动不拦截事件
-                   if(Math.abs(delX) &gt;Math.abs(delY)){
-                       return false
-                   }
-               }
-           }
-       }
-        return super.onInterceptTouchEvent(ev)
-    }
-</code></pre>
-<p>内部解决方案：<br>
-父View（SwipeRefreshLayout）:</p>
-<pre><code class="language-java">    @Override
-    public boolean onInterceptTouchEvent(MotionEvent ev) {
-        //还是只需要处理ACTION_DOWN事件
-        if (ev.getAction() == MotionEvent.ACTION_DOWN) {
-            super.onInterceptTouchEvent(ev);
-            return false;
-        }
-        return true;
-    }
-}
-</code></pre>
-<p>子View（ViewPager）:</p>
-<pre><code class="language-java">    @Override
-    public boolean dispatchTouchEvent(MotionEvent ev) {
-        switch (ev.getAction()) {
-            case MotionEvent.ACTION_DOWN:
-                startX = ev.getX();
-                startY = ev.getY();
-                //这句话如果不加的话处理是不会生效的，所以我们需要看一下SwipeRefreshLayout的requestDisallowInterceptTouchEvent是不是有什么特殊处理
-                ViewCompat.setNestedScrollingEnabled(this, true);
-                getParent().requestDisallowInterceptTouchEvent(true);
-                break;
-            case MotionEvent.ACTION_MOVE:
-                x = ev.getX();
-                y = ev.getY();
-                deltaX = Math.abs(x - startX);
-                deltaY = Math.abs(y - startY);
-                if (deltaX &lt; deltaY) {
-                    getParent().requestDisallowInterceptTouchEvent(false);
-                }
-                break;
-            default:
-                break;
-        }
-        return super.dispatchTouchEvent(ev);
-    }
-</code></pre>
-<p>SwipRefreshLayout:</p>
-<pre><code class="language-java">    public void requestDisallowInterceptTouchEvent(boolean b) {
-        /**
-        条件单独分析
-        21没问题
-        前面的条件过
-        包含有子View这里的target不为null
-       所以就需要看这个了 ViewCompat.isNestedScrollingEnabled(this.mTarget))
-       我们获取ViewPage的isNestedScrollingEnabled的值为false，所以这个就没有进入if条件内
-       所以通过 ViewCompat.setNestedScrollingEnabled(this, true);this就是当前的内部view
-        */
-        if ((VERSION.SDK_INT &gt;= 21 || !(this.mTarget instanceof AbsListView)) &amp;&amp; (this.mTarget == null || ViewCompat.isNestedScrollingEnabled(this.mTarget))) {
-            super.requestDisallowInterceptTouchEvent(b);
         }
     }
 </code></pre>
