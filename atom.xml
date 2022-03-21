@@ -2,7 +2,7 @@
 <feed xmlns="http://www.w3.org/2005/Atom">
     <id>https://arms-merchants.github.io/</id>
     <title>Arms-merchants</title>
-    <updated>2022-03-21T01:14:21.716Z</updated>
+    <updated>2022-03-21T03:25:29.509Z</updated>
     <generator>https://github.com/jpmonette/feed</generator>
     <link rel="alternate" href="https://arms-merchants.github.io/"/>
     <link rel="self" href="https://arms-merchants.github.io/atom.xml"/>
@@ -10,6 +10,172 @@
     <logo>https://arms-merchants.github.io/images/avatar.png</logo>
     <icon>https://arms-merchants.github.io/favicon.ico</icon>
     <rights>All rights reserved 2022, Arms-merchants</rights>
+    <entry>
+        <title type="html"><![CDATA[在不同版本下通过Hook来启动插件activity的流程]]></title>
+        <id>https://arms-merchants.github.io/post/zai-bu-tong-ban-ben-xia-tong-guo-hook-lai-qi-dong-cha-jian-activity-de-liu-cheng/</id>
+        <link href="https://arms-merchants.github.io/post/zai-bu-tong-ban-ben-xia-tong-guo-hook-lai-qi-dong-cha-jian-activity-de-liu-cheng/">
+        </link>
+        <updated>2022-03-21T01:16:29.000Z</updated>
+        <content type="html"><![CDATA[<p>不论哪个版本在启动插件Activity之前都需要通过DexPathLoader来进行相应的加载，这个部分不在此次内容中。<br>
+版本区分的话这里是根据Activity的启动流程差异来进行相应的替换，基本思路一致，版本划分的话主要是8.0以下，10.0以下，10.0及以上版本。</p>
+<h2 id="1hook替换intent">1.Hook替换Intent</h2>
+<pre><code class="language-java">    private const val TARGET_INTENT = &quot;target_intent&quot;
+    fun hookAMS() {
+        try {
+            LogE(Build.VERSION.SDK_INT.toString())
+            //1。获取Singleton对象
+            val singletonFieldParams =
+                when {
+                    (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.O) -&gt; {
+                        //8.0以下
+                        &quot;android.app.ActivityManagerNative&quot; to &quot;gDefault&quot;
+                    }
+                    (Build.VERSION.SDK_INT&lt;Build.VERSION_CODES.Q)-&gt;{
+                        //10.0以下
+                        &quot;android.app.ActivityManager&quot; to &quot;IActivityManagerSingleton&quot;
+                    }
+                    else -&gt; {
+                        //10.0及以上
+                        &quot;android.app.ActivityTaskManager&quot; to &quot;IActivityTaskManagerSingleton&quot;
+                    }
+                }
+            val aClass = Class.forName(singletonFieldParams.first)
+            val singletonField = aClass.getDeclaredField(singletonFieldParams.second)
+            singletonField.isAccessible = true
+            val singleton = singletonField[null]
+            val singletonClazz = Class.forName(&quot;android.util.Singleton&quot;)
+            val mInstanceFiled = singletonClazz.getDeclaredField(&quot;mInstance&quot;)
+            mInstanceFiled.isAccessible = true
+            val mInstance = mInstanceFiled[singleton]
+
+            //2。获取Singleton中的IActivityTaskManager对象,区分版本10以下
+            val proxyClass =
+                if (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.Q) {
+                    Class.forName(&quot;android.app.IActivityManager&quot;)
+                } else {
+                    Class.forName(&quot;android.app.IActivityTaskManager&quot;)
+                }
+            //3.创建动态代理
+            val newProxyInstance = Proxy.newProxyInstance(
+                Thread.currentThread().contextClassLoader,
+                arrayOf(proxyClass)
+            ) { proxy, method, args -&gt; //这里已经代理了IActivityTaskManagerSingleton
+                // 对象，那么它的方法执行都会到这里，那么我们只要要获取获取对应的方法，那么就可以获取方法中的参数
+                //参数当中是有Intent，那么这里就可以修改为宿主中Activity来执行
+                //只需要处理startActivities的方法
+                //这里代理的对象方法是在android8以后的版本
+                try {
+                    var index = -1
+                    if (&quot;startActivity&quot; == method.name) {
+                        index = args.indexOfFirst { it is Intent }
+                        val defIntent = args[index] as Intent
+                        val proxyIntent = Intent()
+                        proxyIntent.setClassName(
+                            &quot;com.arm.arount&quot;, &quot;com&quot; +
+                                    &quot;.arm.arount.ProxyActivity&quot;
+                        )
+                        proxyIntent.putExtra(TARGET_INTENT, defIntent)
+                        args[index] = proxyIntent
+                    }
+                    method.invoke(mInstance, *args.orEmpty())
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            //4.修改singleton的代理对象
+            mInstanceFiled[singleton] = newProxyInstance
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+</code></pre>
+<p>到上面一步我们已经完成了hook startActivity的流程，并且将启动插件的Intent替换为了宿主代理的Intent，并在其中保存了原始的Intent。那么下一步我们就需要在合适的实际替换回原始的Intent。</p>
+<h2 id="2替换回原始intent">2.替换回原始Intent</h2>
+<p>先上代码：</p>
+<pre><code class="language-java">fun hookHandleIntent() {
+        try {
+            //获取ActivityThread
+            val aClass = Class.forName(&quot;android.app.ActivityThread&quot;)
+            //获取它的静态实例对象
+            val sCurrentActivityThread = aClass.getDeclaredField(&quot;sCurrentActivityThread&quot;)
+            sCurrentActivityThread.isAccessible = true
+            val activityThread = sCurrentActivityThread[null]
+            val mHField = aClass.getDeclaredField(&quot;mH&quot;)
+            mHField.isAccessible = true
+            val handler = mHField[activityThread] as Handler
+            val mCallbackField = Handler::class.java.getDeclaredField(&quot;mCallback&quot;)
+            mCallbackField.isAccessible = true
+            val callback = Handler.Callback { msg -&gt;
+                try {
+                    when (msg.what) {
+                        //Android8.0以下的处理的LaunchActivity
+                        100 -&gt; {
+                            val intentField = msg.obj.javaClass.getDeclaredField(&quot;intent&quot;)
+                            intentField.isAccessible = true
+                            val proxyIntent: Intent = intentField.get(msg.obj) as Intent
+                            val intent = proxyIntent.getParcelableExtra&lt;Intent?&gt;(TARGET_INTENT)
+                            intent?.let {
+                                intentField.set(msg.obj, it)
+                            }
+                        }
+                        //8.0以上的生命周期入口
+                        159 -&gt; {
+                            val mActivityCallbacksField = msg.obj.javaClass.getDeclaredField(
+                                &quot;mActivityCallbacks&quot;
+                            )
+                            mActivityCallbacksField.isAccessible = true
+                            val mActivityCallbacks = mActivityCallbacksField[msg.obj] as List&lt;*&gt;
+                            val launchActivityItem = mActivityCallbacks.firstOrNull {
+                                &quot;android.app.servertransaction.LaunchActivityItem&quot; == it?.javaClass?.name
+                            }
+                            launchActivityItem?.let {
+                                val mIntentField = it.javaClass.getDeclaredField(&quot;mIntent&quot;)
+                                mIntentField.isAccessible = true
+                                val proxyIntent = mIntentField[launchActivityItem] as Intent
+                                val intent =
+                                    proxyIntent.getParcelableExtra&lt;Intent&gt;(TARGET_INTENT)
+                                if (intent != null) {
+                                    mIntentField[launchActivityItem] = intent
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                //这里一定要返回false不然正常流程的handleMessage就执行不到了
+                false
+            }
+            mCallbackField[handler] = callback
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+</code></pre>
+<p>属性activity启动流程的因为都发现我们是在ActivityThread的mh的Handler中拦截消息的，Handler中有一个CallBack对象，可以在handleMessage之前拿到msg</p>
+<pre><code class="language-java">    public void dispatchMessage(@NonNull Message msg) {
+        if (msg.callback != null) {
+            handleCallback(msg);
+        } else {
+            if (mCallback != null) {
+                //这里就是一定要返回false的原因
+                if (mCallback.handleMessage(msg)) {
+                    return;
+                }
+            }
+            handleMessage(msg);
+        }
+    }
+</code></pre>
+<p>在拿到msg之后我们需要处理以下8.0以下以及8.0以上的区分：<br>
+· 在Android8.0以下时，是在ActivityThread的Handler中处理<br>
+100-109这几个值来处理不同的生命周期的，并且在msg中可以直接获取到Intent对象。<br>
+· 而在Android8.0以后，这几个值没有了，统一为159的入口，并通过状态模式来处理，并且相应的参数有封装，我们需要获取一些包装参数之后才能获取到Intent。</p>
+<p>到这里插件的Activity就可以启动了，但是你会发现资源布局都没法加载，下面再说插件资源的加载。</p>
+<hr>
+<p>Hook的方式来进行插件化开发，很受系统版本的限制，并且随着Android系统版本的升级要做不同的适配。所以还有另外一种插件方案就是通过容器来实现插件化，这种方式不需要hook太多的系统代码，腾讯的Shadow插件就是这个来实现的，宿主的app中有的是容器的activity,编写的业务插件按原来的逻辑继承Activity，但是在编译打包的时候通过插件将其继承改为ShadowActivity，这里其实是改为了普通类，而在代理类中通过调用这些方法，从而实现了生命周期方法的调用，不过这里都避免不了加载插件的过程，所有DexClassLoader还是必须要加载使用的，这也是热修复的基础。</p>
+]]></content>
+    </entry>
     <entry>
         <title type="html"><![CDATA[Kotlin反射]]></title>
         <id>https://arms-merchants.github.io/post/kotlin-fan-she/</id>
@@ -835,7 +1001,7 @@ looper.loop()-&gt;messageQueue.next()-&gt;handler.dispatchMessage()-&gt;handle.h
                     handleRunIsolatedEntryPoint((String) ((SomeArgs) msg.obj).arg1,
                             (String[]) ((SomeArgs) msg.obj).arg2);
                     break;
-                    //执行交易？？
+                    //这里是12中对之前生命周期的一个统一入口，改为状态模式
                 case EXECUTE_TRANSACTION:
                     final ClientTransaction transaction = (ClientTransaction) msg.obj;
                     mTransactionExecutor.execute(transaction);
@@ -3501,171 +3667,6 @@ class NestedScrollableHost : FrameLayout {
 <h2 id="相当于就是你不让我覆写那我写个中间层把你的事件拦截掉往下分发">相当于就是你不让我覆写，那我写个中间层把你的事件拦截掉往下分发。</h2>
 <hr>
 <h1 id="完整项目地址"><a href="https://github.com/Arms-merchants/Study/tree/main/UI/FlowView/app/src/main/java/com/arms/flowview/vp">完整项目地址</a></h1>
-]]></content>
-    </entry>
-    <entry>
-        <title type="html"><![CDATA[ViewPager的源码分析--TODO]]></title>
-        <id>https://arms-merchants.github.io/post/viewpager-de-yuan-ma-fen-xi-todo/</id>
-        <link href="https://arms-merchants.github.io/post/viewpager-de-yuan-ma-fen-xi-todo/">
-        </link>
-        <updated>2021-11-25T01:28:14.000Z</updated>
-        <content type="html"><![CDATA[<p>这是在基于总的Fragment数量为5，并且第一次数据加载已经完成，从0的tab切换到2的tab的过程，limit为1，分析2的创建以及3的预加载，还有0的destory：</p>
-<pre><code class="language-java">    void populate(int newCurrentItem) {
-        //newCurrentItem =2
-        ViewPager.ItemInfo oldCurInfo = null;
-        if (mCurItem != newCurrentItem) {
-            //oldCurInfo = 0
-            oldCurInfo = infoForPosition(mCurItem);
-            //mCurItem = 2
-            mCurItem = newCurrentItem;
-        }
-
-        mAdapter.startUpdate(this);
-        //mOffscreenPageLimit = 1
-        final int pageLimit = mOffscreenPageLimit;
-        //startPos = 1
-        final int startPos = Math.max(0, mCurItem - pageLimit);
-        //n= 5
-        final int N = mAdapter.getCount();
-        //endPos = 3
-        final int endPos = Math.min(N - 1, mCurItem + pageLimit);
-
-        // Locate the currently focused item or add it if needed.
-        int curIndex = -1;
-        ViewPager.ItemInfo curItem = null;
-        // mItems.size() = 2 (0,1)
-
-        for (curIndex = 0; curIndex &lt; mItems.size(); curIndex++) {
-            final ViewPager.ItemInfo ii = mItems.get(curIndex);
-            if (ii.position &gt;= mCurItem) {
-                if (ii.position == mCurItem) curItem = ii;
-                break;
-            }
-        }
-        //curIndex =2
-        if (curItem == null &amp;&amp; N &gt; 0) {
-            curItem = addNewItem(mCurItem, curIndex);
-        }
-        //把index =2的fragment加入了
-
-        // Fill 3x the available width or up to the number of offscreen
-        // pages requested to either side, whichever is larger.
-        // If we have no current item we have no work to do.
-        if (curItem != null) {
-            float extraWidthLeft = 0.f;
-            //itemIndex = 1
-            int itemIndex = curIndex - 1;
-            //拿到1的ItemInfo
-            ViewPager.ItemInfo ii = itemIndex &gt;= 0 ? mItems.get(itemIndex) : null;
-            final int clientWidth = getClientWidth();
-            final float leftWidthNeeded = clientWidth &lt;= 0 ? 0 :
-                    2.f - curItem.widthFactor + (float) getPaddingLeft() / (float) clientWidth;
-            //pos = 1
-            for (int pos = mCurItem - 1; pos &gt;= 0; pos--) {
-                if (extraWidthLeft &gt;= leftWidthNeeded &amp;&amp; pos &lt; startPos) {
-                    if (ii == null) {
-                        break;
-                    }
-                    if (pos == ii.position &amp;&amp; !ii.scrolling) {
-                        mItems.remove(itemIndex);
-                        mAdapter.destroyItem(this, pos, ii.object);
-                        if (DEBUG) {
-                            Log.i(TAG, &quot;populate() - destroyItem() with pos: &quot; + pos
-                                    + &quot; view: &quot; + ((View) ii.object));
-                        }
-                        itemIndex--;
-                        curIndex--;
-                        ii = itemIndex &gt;= 0 ? mItems.get(itemIndex) : null;
-                    }
-                } else if (ii != null &amp;&amp; pos == ii.position) {
-                    extraWidthLeft += ii.widthFactor;
-                    itemIndex--;
-                    //在1的时候拿到0的ItemInfo
-                    ii = itemIndex &gt;= 0 ? mItems.get(itemIndex) : null;
-                } else {
-                    ii = addNewItem(pos, itemIndex + 1);
-                    extraWidthLeft += ii.widthFactor;
-                    curIndex++;
-                    ii = itemIndex &gt;= 0 ? mItems.get(itemIndex) : null;
-                }
-            }
-
-            float extraWidthRight = curItem.widthFactor;
-            itemIndex = curIndex + 1;
-            if (extraWidthRight &lt; 2.f) {
-                ii = itemIndex &lt; mItems.size() ? mItems.get(itemIndex) : null;
-                final float rightWidthNeeded = clientWidth &lt;= 0 ? 0 :
-                        (float) getPaddingRight() / (float) clientWidth + 2.f;
-                for (int pos = mCurItem + 1; pos &lt; N; pos++) {
-                    if (extraWidthRight &gt;= rightWidthNeeded &amp;&amp; pos &gt; endPos) {
-                        if (ii == null) {
-                            break;
-                        }
-                        if (pos == ii.position &amp;&amp; !ii.scrolling) {
-                            mItems.remove(itemIndex);
-                            mAdapter.destroyItem(this, pos, ii.object);
-                            if (DEBUG) {
-                                Log.i(TAG, &quot;populate() - destroyItem() with pos: &quot; + pos
-                                        + &quot; view: &quot; + ((View) ii.object));
-                            }
-                            ii = itemIndex &lt; mItems.size() ? mItems.get(itemIndex) : null;
-                        }
-                    } else if (ii != null &amp;&amp; pos == ii.position) {
-                        extraWidthRight += ii.widthFactor;
-                        itemIndex++;
-                        ii = itemIndex &lt; mItems.size() ? mItems.get(itemIndex) : null;
-                    } else {
-                        ii = addNewItem(pos, itemIndex);
-                        itemIndex++;
-                        extraWidthRight += ii.widthFactor;
-                        ii = itemIndex &lt; mItems.size() ? mItems.get(itemIndex) : null;
-                    }
-                }
-            }
-
-            calculatePageOffsets(curItem, curIndex, oldCurInfo);
-
-            mAdapter.setPrimaryItem(this, mCurItem, curItem.object);
-        }
-
-        mAdapter.finishUpdate(this);
-
-        // Check width measurement of current pages and drawing sort order.
-        // Update LayoutParams as needed.
-        //3
-        final int childCount = getChildCount();
-        for (int i = 0; i &lt; childCount; i++) {
-            final View child = getChildAt(i);
-            final ViewPager.LayoutParams lp = (ViewPager.LayoutParams) child.getLayoutParams();
-            lp.childIndex = i;
-            if (!lp.isDecor &amp;&amp; lp.widthFactor == 0.f) {
-                // 0 means requery the adapter for this, it doesn't have a valid width.
-                final ViewPager.ItemInfo ii = infoForChild(child);
-                if (ii != null) {
-                    lp.widthFactor = ii.widthFactor;
-                    lp.position = ii.position;
-                }
-            }
-        }
-        sortChildDrawingOrder();
-
-        if (hasFocus()) {
-            View currentFocused = findFocus();
-            ViewPager.ItemInfo ii = currentFocused != null ? infoForAnyChild(currentFocused) : null;
-            if (ii == null || ii.position != mCurItem) {
-                for (int i = 0; i &lt; getChildCount(); i++) {
-                    View child = getChildAt(i);
-                    ii = infoForChild(child);
-                    if (ii != null &amp;&amp; ii.position == mCurItem) {
-                        if (child.requestFocus(View.FOCUS_FORWARD)) {
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-</code></pre>
 ]]></content>
     </entry>
 </feed>

@@ -3,7 +3,7 @@
     <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Handler | Arms-merchants</title>
-<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1647825258116">
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1647833117681">
 <link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
 <link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
 <link rel="alternate" type="application/atom+xml" title="Handler | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
@@ -26,7 +26,7 @@
       <div class="main-content">
         <div class="site-header">
   <a href="https://arms-merchants.github.io/">
-  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1647825258116" alt="">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1647833117681" alt="">
   </a>
   <h1 class="site-title">
     Arms-merchants
@@ -417,7 +417,7 @@ looper.loop()-&gt;messageQueue.next()-&gt;handler.dispatchMessage()-&gt;handle.h
                     handleRunIsolatedEntryPoint((String) ((SomeArgs) msg.obj).arg1,
                             (String[]) ((SomeArgs) msg.obj).arg2);
                     break;
-                    //执行交易？？
+                    //这里是12中对之前生命周期的一个统一入口，改为状态模式
                 case EXECUTE_TRANSACTION:
                     final ClientTransaction transaction = (ClientTransaction) msg.obj;
                     mTransactionExecutor.execute(transaction);
