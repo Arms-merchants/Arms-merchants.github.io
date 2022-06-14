@@ -1,0 +1,294 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NDK开发-使用FMOD进行变声 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1655172453593">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="NDK开发-使用FMOD进行变声 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="FMOD一款强大的语音引擎，等同于视频届的FFMPEG.可以进行音频的多种修改和设置，它有提供客户端来进行直接使用，不过今天我们通过集成API来实现几个简单的变音效果。
+1.NDK配置
+现在需要注意的是在新版本的AndroidStudio中..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1655172453593" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              NDK开发-使用FMOD进行变声
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-04-28
+              </span>
+              <span>
+                4 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>FMOD一款强大的语音引擎，等同于视频届的FFMPEG.可以进行音频的多种修改和设置，它有提供客户端来进行直接使用，不过今天我们通过集成API来实现几个简单的变音效果。</p>
+<h2 id="1ndk配置">1.NDK配置</h2>
+<p>现在需要注意的是在新版本的AndroidStudio中已经不支持在local.properties设置中设置ndk.dir的配置来设置使用的NDK版本，如果需要配置的话通过下面的方式：</p>
+<pre><code class="language-java">android{
+    ndkVersion &quot;major.minor.build&quot; //ndkVersion &quot;21.3.6528147&quot;
+}
+</code></pre>
+<p>如果不指定的话那么默认采用当前AGP支持的最高版本。<br>
+修改默认的CMakeLists.txt文件：</p>
+<pre><code class="language-java">#批量导入源文件，避免还需要一个个的导入源文件
+file(GLOB allCPP *.c *.h *.cpp)
+
+add_library( # Sets the name of the library.
+        native-lib
+
+        # Sets the library as a shared library.
+        SHARED
+
+        # Provides a relative path to your source file(s).
+        ${allCPP}
+        )
+
+#导入库文件，也就是三方的so，不过需要注意这个是需要在jniLibs中有对应文件夹后才能生效，不然会在编译阶段报错
+set(CMAKE_CXX_FLAGS &quot;${CMAKE_CXX_FLAGS} -L${CMAKE_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI}&quot;)
+</code></pre>
+<h2 id="2添加fmod的头文件和库">2.添加FMOD的头文件和库</h2>
+<p>将下载的FMOD中对应的头文件文件夹inc拷贝到cpp目录下，在jniLibs中拷贝需要使用到的的架构目录。<br>
+在CMakeLists.txt中添加配置信息：</p>
+<pre><code class="language-java">#批量导入头文件,注意对应的目录，当前的根目录是CMakeLists.txt所在的目录
+include_directories(&quot;inc&quot;)
+#链接对应的库文件
+target_link_libraries( # Specifies the target library.
+        native-lib
+
+        # Links the target library to the log library
+        # included in the NDK.
+        ${log-lib}
+        fmod
+        fmodL
+        )
+</code></pre>
+<p>完整的CMakeLists.txt文件：</p>
+<pre><code class="language-java"># For more information about using CMake with Android Studio, read the
+# documentation: https://d.android.com/studio/projects/add-native-code.html
+
+# Sets the minimum version of CMake required to build the native library.
+
+cmake_minimum_required(VERSION 3.10.2)
+
+# Declares and names the project.
+
+project(&quot;ndktest&quot;)
+
+# Creates and names a library, sets it as either STATIC
+# or SHARED, and provides the relative paths to its source code.
+# You can define multiple libraries, and CMake builds them for you.
+# Gradle automatically packages shared libraries with your APK.
+
+#批量导入头文件
+include_directories(&quot;inc&quot;)
+#批量导入源文件
+file(GLOB allCPP *.c *.h *.cpp)
+
+add_library( # Sets the name of the library.
+        native-lib
+
+        # Sets the library as a shared library.
+        SHARED
+
+        # Provides a relative path to your source file(s).
+        ${allCPP}
+        )
+#导入库文件，也就是三方的so
+set(CMAKE_CXX_FLAGS &quot;${CMAKE_CXX_FLAGS} -L${CMAKE_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI}&quot;)
+
+# Searches for a specified prebuilt library and stores the path as a
+# variable. Because CMake includes system libraries in the search path by
+# default, you only need to specify the name of the public NDK library
+# you want to add. CMake verifies that the library exists before
+# completing its build.
+
+find_library( # Sets the name of the path variable.
+        log-lib
+
+        # Specifies the name of the NDK library that
+        # you want CMake to locate.
+        log)
+
+# Specifies libraries CMake should link to your target library. You
+# can link multiple libraries, such as libraries you define in this
+# build script, prebuilt third-party libraries, or system libraries.
+
+target_link_libraries( # Specifies the target library.
+        native-lib
+
+        # Links the target library to the log library
+        # included in the NDK.
+        ${log-lib}
+        fmod
+        fmodL
+        )
+</code></pre>
+<h2 id="3准备需要编辑的音频文件">3.准备需要编辑的音频文件</h2>
+<p>这里我直接准备了一个mp3文件来进行编辑，当然也可以进行录制后编辑。在assets目录中放入mp3文件，这里为了方便操作，使用okio将文件拷贝到cache目录操作，这样也不需要进行权限的申请。</p>
+<pre><code class="language-java">    implementation 'com.squareup.okio:okio:2.10.0'
+</code></pre>
+<p>拷贝文件：</p>
+<pre><code class="language-java">    private fun copyFile(): String {
+        val source = this.assets.open(&quot;test.mp3&quot;).source()
+        val targetFile = File(this.cacheDir, &quot;test.mp3&quot;)
+        val target = targetFile.sink().buffer()
+        target.writeAll(source)
+        target.close()
+        source.close()
+        return targetFile.path;
+    }
+</code></pre>
+<h2 id="4">4.</h2>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#1ndk%E9%85%8D%E7%BD%AE">1.NDK配置</a></li>
+<li><a href="#2%E6%B7%BB%E5%8A%A0fmod%E7%9A%84%E5%A4%B4%E6%96%87%E4%BB%B6%E5%92%8C%E5%BA%93">2.添加FMOD的头文件和库</a></li>
+<li><a href="#3%E5%87%86%E5%A4%87%E9%9C%80%E8%A6%81%E7%BC%96%E8%BE%91%E7%9A%84%E9%9F%B3%E9%A2%91%E6%96%87%E4%BB%B6">3.准备需要编辑的音频文件</a></li>
+<li><a href="#4">4.</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/zai-bu-tong-ban-ben-xia-tong-guo-hook-lai-qi-dong-cha-jian-activity-de-liu-cheng/">
+              <h3 class="post-title">
+                在不同版本下通过Hook来启动插件activity的流程
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

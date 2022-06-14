@@ -1,0 +1,240 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>对Closeable的自动关闭处理，语法🍬 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1655172453593">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="对Closeable的自动关闭处理，语法🍬 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="首先看一段示例代码：
+ FileInputStream fis = null;
+        try {
+            fis = new FileInputStream(&quot;&quot;);
+        } cat..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1655172453593" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              对Closeable的自动关闭处理，语法🍬
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-06-14
+              </span>
+              <span>
+                2 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1655151961007-b07284733392?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=654&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>首先看一段示例代码：</p>
+<pre><code class="language-java"> FileInputStream fis = null;
+        try {
+            fis = new FileInputStream(&quot;&quot;);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                fis.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+</code></pre>
+<p>一段基本操作，对文件流进行操作那么不论成功还是失败最好都要进行文件流的关闭。不过这样的代码确实挺样板的。我们看下java和kotlin对这中样本代码消除的语法糖实现。</p>
+<h2 id="1java的实现">1.java的实现</h2>
+<pre><code class="language-java">     try (FileInputStream fis = new FileInputStream(&quot;file_path&quot;);
+             FileOutputStream fos = new FileOutputStream(&quot;file_path&quot;)) {
+            byte[] bytes = new byte[1024];
+            while ( fis.read(bytes) != -1) {
+                fos.write(bytes);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+</code></pre>
+<p>跟原来的写法唯一的区别就是将Closeable对象的声明是在try后的括号内,并且可以通过；来进行分割声明多个Closeable对象，在try包裹内的代码执行完后都会被自动close掉。</p>
+<h2 id="2kotlin的实现">2.kotlin的实现</h2>
+<pre><code class="language-java">   val fis = FileInputStream(&quot;file_path&quot;)
+    fis.use { 
+        fis.read()
+    }
+</code></pre>
+<p>通过使用use操作符来实现自动关闭Closeable对象，我们看一下use的源码：</p>
+<pre><code class="language-java">@InlineOnly
+@RequireKotlin(&quot;1.2&quot;, versionKind = RequireKotlinVersionKind.COMPILER_VERSION, message = &quot;Requires newer compiler version to be inlined correctly.&quot;)
+public inline fun &lt;T : Closeable?, R&gt; T.use(block: (T) -&gt; R): R {
+    contract {
+        callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+    }
+    var exception: Throwable? = null
+    try {
+        return block(this)
+    } catch (e: Throwable) {
+        exception = e
+        throw e
+    } finally {
+        when {
+            apiVersionIsAtLeast(1, 1, 0) -&gt; this.closeFinally(exception)
+            this == null -&gt; {}
+            exception == null -&gt; close()
+            else -&gt;
+                try {
+                    close()
+                } catch (closeException: Throwable) {
+                    // cause.addSuppressed(closeException) // ignored here
+                }
+        }
+    }
+}
+</code></pre>
+<p>一个高阶的内联函数，最终都是通过finally中进行关闭操作。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#1java%E7%9A%84%E5%AE%9E%E7%8E%B0">1.java的实现</a></li>
+<li><a href="#2kotlin%E7%9A%84%E5%AE%9E%E7%8E%B0">2.kotlin的实现</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/dui-ying-closeable-de-zi-dong-guan-bi-chu-li/">
+              <h3 class="post-title">
+                对应Closeable的自动关闭处理
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
