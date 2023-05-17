@@ -1,0 +1,333 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>在不同版本下通过Hook来启动插件activity的流程 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1684231823842">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="在不同版本下通过Hook来启动插件activity的流程 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="不论哪个版本在启动插件Activity之前都需要通过DexPathLoader来进行相应的加载，这个部分不在此次内容中。
+版本区分的话这里是根据Activity的启动流程差异来进行相应的替换，基本思路一致，版本划分的话主要是8.0以下，10..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1684231823842" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              在不同版本下通过Hook来启动插件activity的流程
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-03-21
+              </span>
+              <span>
+                6 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1604881990250-df44abbb264e?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=774&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>不论哪个版本在启动插件Activity之前都需要通过DexPathLoader来进行相应的加载，这个部分不在此次内容中。<br>
+版本区分的话这里是根据Activity的启动流程差异来进行相应的替换，基本思路一致，版本划分的话主要是8.0以下，10.0以下，10.0及以上版本。</p>
+<h2 id="1hook替换intent">1.Hook替换Intent</h2>
+<pre><code class="language-java">    private const val TARGET_INTENT = &quot;target_intent&quot;
+    fun hookAMS() {
+        try {
+            LogE(Build.VERSION.SDK_INT.toString())
+            //1。获取Singleton对象
+            val singletonFieldParams =
+                when {
+                    (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.O) -&gt; {
+                        //8.0以下
+                        &quot;android.app.ActivityManagerNative&quot; to &quot;gDefault&quot;
+                    }
+                    (Build.VERSION.SDK_INT&lt;Build.VERSION_CODES.Q)-&gt;{
+                        //10.0以下
+                        &quot;android.app.ActivityManager&quot; to &quot;IActivityManagerSingleton&quot;
+                    }
+                    else -&gt; {
+                        //10.0及以上
+                        &quot;android.app.ActivityTaskManager&quot; to &quot;IActivityTaskManagerSingleton&quot;
+                    }
+                }
+            val aClass = Class.forName(singletonFieldParams.first)
+            val singletonField = aClass.getDeclaredField(singletonFieldParams.second)
+            singletonField.isAccessible = true
+            val singleton = singletonField[null]
+            val singletonClazz = Class.forName(&quot;android.util.Singleton&quot;)
+            val mInstanceFiled = singletonClazz.getDeclaredField(&quot;mInstance&quot;)
+            mInstanceFiled.isAccessible = true
+            val mInstance = mInstanceFiled[singleton]
+
+            //2。获取Singleton中的IActivityTaskManager对象,区分版本10以下
+            val proxyClass =
+                if (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.Q) {
+                    Class.forName(&quot;android.app.IActivityManager&quot;)
+                } else {
+                    Class.forName(&quot;android.app.IActivityTaskManager&quot;)
+                }
+            //3.创建动态代理
+            val newProxyInstance = Proxy.newProxyInstance(
+                Thread.currentThread().contextClassLoader,
+                arrayOf(proxyClass)
+            ) { proxy, method, args -&gt; //这里已经代理了IActivityTaskManagerSingleton
+                // 对象，那么它的方法执行都会到这里，那么我们只要要获取获取对应的方法，那么就可以获取方法中的参数
+                //参数当中是有Intent，那么这里就可以修改为宿主中Activity来执行
+                //只需要处理startActivities的方法
+                //这里代理的对象方法是在android8以后的版本
+                try {
+                    var index = -1
+                    if (&quot;startActivity&quot; == method.name) {
+                        index = args.indexOfFirst { it is Intent }
+                        val defIntent = args[index] as Intent
+                        val proxyIntent = Intent()
+                        proxyIntent.setClassName(
+                            &quot;com.arm.arount&quot;, &quot;com&quot; +
+                                    &quot;.arm.arount.ProxyActivity&quot;
+                        )
+                        proxyIntent.putExtra(TARGET_INTENT, defIntent)
+                        args[index] = proxyIntent
+                    }
+                    method.invoke(mInstance, *args.orEmpty())
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            //4.修改singleton的代理对象
+            mInstanceFiled[singleton] = newProxyInstance
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+</code></pre>
+<p>到上面一步我们已经完成了hook startActivity的流程，并且将启动插件的Intent替换为了宿主代理的Intent，并在其中保存了原始的Intent。那么下一步我们就需要在合适的实际替换回原始的Intent。</p>
+<h2 id="2替换回原始intent">2.替换回原始Intent</h2>
+<p>先上代码：</p>
+<pre><code class="language-java">fun hookHandleIntent() {
+        try {
+            //获取ActivityThread
+            val aClass = Class.forName(&quot;android.app.ActivityThread&quot;)
+            //获取它的静态实例对象
+            val sCurrentActivityThread = aClass.getDeclaredField(&quot;sCurrentActivityThread&quot;)
+            sCurrentActivityThread.isAccessible = true
+            val activityThread = sCurrentActivityThread[null]
+            val mHField = aClass.getDeclaredField(&quot;mH&quot;)
+            mHField.isAccessible = true
+            val handler = mHField[activityThread] as Handler
+            val mCallbackField = Handler::class.java.getDeclaredField(&quot;mCallback&quot;)
+            mCallbackField.isAccessible = true
+            val callback = Handler.Callback { msg -&gt;
+                try {
+                    when (msg.what) {
+                        //Android8.0以下的处理的LaunchActivity
+                        100 -&gt; {
+                            val intentField = msg.obj.javaClass.getDeclaredField(&quot;intent&quot;)
+                            intentField.isAccessible = true
+                            val proxyIntent: Intent = intentField.get(msg.obj) as Intent
+                            val intent = proxyIntent.getParcelableExtra&lt;Intent?&gt;(TARGET_INTENT)
+                            intent?.let {
+                                intentField.set(msg.obj, it)
+                            }
+                        }
+                        //8.0以上的生命周期入口
+                        159 -&gt; {
+                            val mActivityCallbacksField = msg.obj.javaClass.getDeclaredField(
+                                &quot;mActivityCallbacks&quot;
+                            )
+                            mActivityCallbacksField.isAccessible = true
+                            val mActivityCallbacks = mActivityCallbacksField[msg.obj] as List&lt;*&gt;
+                            val launchActivityItem = mActivityCallbacks.firstOrNull {
+                                &quot;android.app.servertransaction.LaunchActivityItem&quot; == it?.javaClass?.name
+                            }
+                            launchActivityItem?.let {
+                                val mIntentField = it.javaClass.getDeclaredField(&quot;mIntent&quot;)
+                                mIntentField.isAccessible = true
+                                val proxyIntent = mIntentField[launchActivityItem] as Intent
+                                val intent =
+                                    proxyIntent.getParcelableExtra&lt;Intent&gt;(TARGET_INTENT)
+                                if (intent != null) {
+                                    mIntentField[launchActivityItem] = intent
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                //这里一定要返回false不然正常流程的handleMessage就执行不到了
+                false
+            }
+            mCallbackField[handler] = callback
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+</code></pre>
+<p>属性activity启动流程的因为都发现我们是在ActivityThread的mh的Handler中拦截消息的，Handler中有一个CallBack对象，可以在handleMessage之前拿到msg</p>
+<pre><code class="language-java">    public void dispatchMessage(@NonNull Message msg) {
+        if (msg.callback != null) {
+            handleCallback(msg);
+        } else {
+            if (mCallback != null) {
+                //这里就是一定要返回false的原因
+                if (mCallback.handleMessage(msg)) {
+                    return;
+                }
+            }
+            handleMessage(msg);
+        }
+    }
+</code></pre>
+<p>在拿到msg之后我们需要处理以下8.0以下以及8.0以上的区分：<br>
+· 在Android8.0以下时，是在ActivityThread的Handler中处理<br>
+100-109这几个值来处理不同的生命周期的，并且在msg中可以直接获取到Intent对象。<br>
+· 而在Android8.0以后，这几个值没有了，统一为159的入口，并通过状态模式来处理，并且相应的参数有封装，我们需要获取一些包装参数之后才能获取到Intent。</p>
+<p>到这里插件的Activity就可以启动了，但是你会发现资源布局都没法加载，下面再说插件资源的加载。</p>
+<hr>
+<p>Hook的方式来进行插件化开发，很受系统版本的限制，并且随着Android系统版本的升级要做不同的适配。所以还有另外一种插件方案就是通过容器来实现插件化，这种方式不需要hook太多的系统代码，腾讯的Shadow插件就是这个来实现的，宿主的app中有的是容器的activity,编写的业务插件按原来的逻辑继承Activity，但是在编译打包的时候通过插件将其继承改为ShadowActivity，这里其实是改为了普通类，而在代理类中通过调用这些方法，从而实现了生命周期方法的调用，不过这里都避免不了加载插件的过程，所有DexClassLoader还是必须要加载使用的，这也是热修复的基础。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#1hook%E6%9B%BF%E6%8D%A2intent">1.Hook替换Intent</a></li>
+<li><a href="#2%E6%9B%BF%E6%8D%A2%E5%9B%9E%E5%8E%9F%E5%A7%8Bintent">2.替换回原始Intent</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/kotlin-fan-she/">
+              <h3 class="post-title">
+                Kotlin反射
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

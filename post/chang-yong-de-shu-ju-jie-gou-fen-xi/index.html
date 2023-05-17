@@ -1,0 +1,385 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>常用的数据结构分析 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1684231823842">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="常用的数据结构分析 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="常用的数据结构
+ArrayList：底层由数组实现，所以它在内存中是一块连续的空间
+/**
+两种情况，一种是直接在添加，那么它是添加在数组的最后，这个时候只需要让size++的元素填充为e
+*/
+    public boolean add..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1684231823842" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              常用的数据结构分析
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-02-22
+              </span>
+              <span>
+                8 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1638913974023-cef988e81629?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDF8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=1770&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>常用的数据结构<br>
+ArrayList：底层由数组实现，所以它在内存中是一块连续的空间</p>
+<pre><code class="language-java">/**
+两种情况，一种是直接在添加，那么它是添加在数组的最后，这个时候只需要让size++的元素填充为e
+*/
+    public boolean add(E e) {
+        ensureCapacityInternal(size + 1);  // Increments modCount!!
+        elementData[size++] = e;
+        return true;
+    }
+/**
+在指定的位置插入，System.arraycopy首先会将当前index到数组最后的元素后移拷贝一份，再将插入的元素插入index
+*/
+    public void add(int index, E element) {
+        if (index &gt; size || index &lt; 0)
+            throw new IndexOutOfBoundsException(outOfBoundsMsg(index));
+
+        ensureCapacityInternal(size + 1);  // Increments modCount!!
+        System.arraycopy(elementData, index, elementData, index + 1,
+                         size - index);
+        elementData[index] = element;
+        size++;
+    }
+</code></pre>
+<p>所以在add的时候如果是发生在中间的情况下，那么会发生一次数据拷贝</p>
+<pre><code class="language-java">  public E remove(int index) {
+        if (index &gt;= size)
+            throw new IndexOutOfBoundsException(outOfBoundsMsg(index));
+
+        modCount++;
+        E oldValue = (E) elementData[index];
+
+        int numMoved = size - index - 1;
+        if (numMoved &gt; 0)
+            System.arraycopy(elementData, index+1, elementData, index,
+                             numMoved);
+        elementData[--size] = null; // clear to let GC do its work
+
+        return oldValue;
+    }
+</code></pre>
+<p>remove的操作同理，取出index坐标下的对象，然后通过数据拷贝将index+1到末尾的数据向前拷贝一位，并将数组中最后一位置为null，等待GC。</p>
+<pre><code class="language-java">        public E get(int index) {
+            if (index &lt; 0 || index &gt;= this.size)
+              throw new IndexOutOfBoundsException(outOfBoundsMsg(index));
+            if (ArrayList.this.modCount != this.modCount)
+                throw new ConcurrentModificationException();
+            return (E) ArrayList.this.elementData[offset + index];
+        }
+</code></pre>
+<p>而因为ArrayList在内存中是一个连续的内存空间，所以当它声明后它的地址是已知的，如果在内部存入一个Object的对象（4个字节）那么只需要在这个地址上加4就能查询到对应的数据。<br>
+所以ArrayList在进行查询，和直接添加时效率高，但是在进行中间插入以及删除时会因为要进行一次数据拷贝，效率不高。<br>
+与ArrayList通常进行比较的是LinkedList，一个由链表机构构成的数据结构，它在内存中不是一块连续的空间，双向链表。</p>
+<pre><code class="language-java">    private static class Node&lt;E&gt; {
+        //当前节点
+        E item;
+        //前驱
+        Node&lt;E&gt; next;
+        //后驱
+        Node&lt;E&gt; prev;
+
+        Node(Node&lt;E&gt; prev, E element, Node&lt;E&gt; next) {
+            this.item = element;
+            this.next = next;
+            this.prev = prev;
+        }
+    }
+</code></pre>
+<p>链表结构带来的好处是，在进行数据插入和删除时，只需要修改节点的前驱和后驱指向就可以实现，并不需要进行数据的拷贝，但是如果要进行数据查询的话</p>
+<pre><code class="language-java">    public void add(int index, E element) {
+        checkPositionIndex(index);
+
+        if (index == size)
+            linkLast(element);
+        else
+            linkBefore(element, node(index));
+    }
+    //返回指定下标的对象,get的实现也是通过这个方法来进行，所以我们没有办法通过第一个节点知道第10节点的对象，必须要进行循环查询。
+    Node&lt;E&gt; node(int index) {
+        // assert isElementIndex(index);
+
+        if (index &lt; (size &gt;&gt; 1)) {
+            Node&lt;E&gt; x = first;
+            for (int i = 0; i &lt; index; i++)
+                x = x.next;
+            return x;
+        } else {
+            Node&lt;E&gt; x = last;
+            for (int i = size - 1; i &gt; index; i--)
+                x = x.prev;
+            return x;
+        }
+    }
+    //在succ之前插入一个元素，就是把succ的前驱节点设置给e，pred的后驱指向e，succ的前驱指向e，这样就完成了数据插入的操作。删除反之。
+    void linkBefore(E e, Node&lt;E&gt; succ) {
+        // assert succ != null;
+        final Node&lt;E&gt; pred = succ.prev;
+        final Node&lt;E&gt; newNode = new Node&lt;&gt;(pred, e, succ);
+        succ.prev = newNode;
+        if (pred == null)
+            first = newNode;
+        else
+            pred.next = newNode;
+        size++;
+        modCount++;
+    }
+</code></pre>
+<p>所以LinkedList是一种增删效率快，但是查询慢的数据结构。<br>
+那么有没有一种数据结构是同时具有两者优点的，HashMap<br>
+HashMap在1.7之前后之后的版本是不同的实现<br>
+之前的HashMap结构是由数组➕链表构成的<br>
+之后的HashMap是由数组➕链表➕红黑树构成的</p>
+<p>hash碰撞的出现，以及解决方法？<br>
+HashMap的默认大小-》16</p>
+<pre><code class="language-java">  static final int DEFAULT_INITIAL_CAPACITY = 1 &lt;&lt; 4; // aka 16
+</code></pre>
+<p>HashMap什么时候扩容？由什么决定的？</p>
+<p>长度为2的次幂的意义？<br>
+减小碰撞的可能<br>
+例子：<br>
+Length1 =10<br>
+Length2= 16</p>
+<p>H1  110 = 6<br>
+H2 111 = 7</p>
+<p>L1 ：9 = 1001<br>
+L2 ：15 = 1111</p>
+<p>分别求模<br>
+110<br>
+1001   0000</p>
+<p>111<br>
+1001 0001</p>
+<p>110<br>
+1111   0110</p>
+<p>111<br>
+1111 0111<br>
+可以发现非2次幂的情况下，中间两位为0，那么它就没有计算的意义，只有高位和低位有决定作用，而在2次幂的情况下，都为1那么都参与运算，减少了hashcode的冲突可能。</p>
+<p>加载因子：</p>
+<pre><code class="language-java">    static final float DEFAULT_LOAD_FACTOR = 0.75f;
+</code></pre>
+<p>阙值：0.75*16（length） = 12，就是如果是默认长度的情况下，如果数组长度》=12的话，那么就扩容。</p>
+<p>扩容的意义：均匀分布，减小冲突</p>
+<p>Android特有的数据结构：<br>
+SparseArray:双数组分别存储key和value，但key必须为int类型的数据，通过二分查找的方式去查询key的位置。<br>
+ArrayMap:</p>
+<pre><code class="language-java">        mHashes[index] = hash;
+        mArray[index&lt;&lt;1] = key;
+        mArray[(index&lt;&lt;1)+1] = value;
+</code></pre>
+<p>通过key的hash值查找在mHashes中的下标位置，并将key和value存入对应规则的indx下标对应的位置。<br>
+这里解决了SparseArray的key只能为int类型的限制，也是通过两个数组实现，两个数组分别存储的是key的Hash值，另外一个数组存储的是key和value，所以mArray的长度是mHashes的2倍，在mArray的下标也是2倍为key，2倍加1为value。<br>
+ArrayMap是如何解决Hash碰撞的：</p>
+<pre><code class="language-java">int indexOf(Object key, int hash) {
+        final int N = mSize;
+
+        // Important fast case: if nothing is in here, nothing to look for.
+        if (N == 0) {
+            return ~0;
+        }
+
+        int index = binarySearchHashes(mHashes, N, hash);
+
+        // If the hash code wasn't found, then we have no entry for this key.
+        if (index &lt; 0) {
+            return index;
+        }
+
+        // If the key at the returned index matches, that's what we want.
+        //通过hash获取一个下标后，在实际存储key和value的数组中拿出来跟实际的key比较一下，
+        //如果一样说明就是我们需要查找的下标位置
+        if (key.equals(mArray[index&lt;&lt;1])) {
+            return index;
+        }
+
+        // Search for a matching key after the index.
+        int end;
+        //因为如果出现hash碰撞的情况下，会将mHashes中存储的index加1直到没有冲突为止
+        //上一步获取到的key和实际的key不一样，就是出现了hash碰撞，那么在以这个index+1的起点向右查找,因为hash发生了碰撞，那么在一个范围内存储的hash是一样的，我们只需要在这个一样hash范围内查找
+        for (end = index + 1; end &lt; N &amp;&amp; mHashes[end] == hash; end++) {
+            if (key.equals(mArray[end &lt;&lt; 1])) return end;
+        }
+        //向前查找
+        // Search for a matching key before the index.
+        for (int i = index - 1; i &gt;= 0 &amp;&amp; mHashes[i] == hash; i--) {
+            if (key.equals(mArray[i &lt;&lt; 1])) return i;
+        }
+
+        // Key not found -- return negative value indicating where a
+        // new entry for this key should go.  We use the end of the
+        // hash chain to reduce the number of array entries that will
+        // need to be copied when inserting.
+        return ~end;
+    }
+</code></pre>
+<p>所以相对于HashMap，这两者都是优化了内存空间的使用，因为HashMap是采用空间换时间的策略，只要到达75%的容量就会翻倍扩容，哪怕是只存储一个数据。</p>
+<p>位运算：</p>
+<ul>
+<li>&lt;&lt;: 左移运算符号： num&lt;&lt;1 ,相当于num乘以2</li>
+<li>
+<blockquote>
+<blockquote>
+<p>: 右移运算符号： num&gt;&gt;1 ,相当于num除以2</p>
+</blockquote>
+</blockquote>
+</li>
+<li>
+<blockquote>
+<blockquote>
+<blockquote>
+<p>:无符号右移，忽略符号位，空位都以0补齐</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ul>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/handle/">
+              <h3 class="post-title">
+                Handler
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

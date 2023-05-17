@@ -1,0 +1,589 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hilt的使用 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1684231823842">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Hilt的使用 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="1.什么是依赖注入
+在使用Hilt之前我们要先明白什么是依赖注入？
+依赖注入，在说之前觉得是很高大上的东西，其实在开发中都会使用到只是有可能你只是没有明白其含义而已。
+A a = new A();
+
+对象创建，这是我们开发中最常出现的东西，..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1684231823842" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Hilt的使用
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-12-31
+              </span>
+              <span>
+                10 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1640904758535-067492e54ce9?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=435&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="1什么是依赖注入">1.什么是依赖注入</h2>
+<p>在使用Hilt之前我们要先明白什么是依赖注入？<br>
+依赖注入，在说之前觉得是很高大上的东西，其实在开发中都会使用到只是有可能你只是没有明白其含义而已。</p>
+<pre><code class="language-java">A a = new A();
+</code></pre>
+<p>对象创建，这是我们开发中最常出现的东西，其实这就是依赖注入，不过这个是我们自己手动去进行依赖注入的，创建a这对象它是要依赖与A的这个class的。<br>
+而Hilt就是将这个过程进行自动化了，Hilt是Draggr2的一个专门为Android进行场景话定制的开源框架。</p>
+<h2 id="2hilt配置">2.Hilt配置</h2>
+<p>项目根目标的build.gradle.kts,这里是在kts里的写法，普通的gradle改写下格式就ok。</p>
+<pre><code class="language-java">classpath(&quot;com.google.dagger:hilt-android-gradle-plugin:2.40&quot;)
+</code></pre>
+<p>App的gradle配置</p>
+<pre><code class="language-java">plugins {
+    id(&quot;com.android.application&quot;)
+    kotlin(&quot;android&quot;)
+    id(&quot;kotlin-kapt&quot;)
+    id(&quot;dagger.hilt.android.plugin&quot;)
+}
+android{
+     //hilt的是使用是要求Java8的
+        compileOptions {
+        sourceCompatibility(JavaVersion.VERSION_1_8)
+        targetCompatibility(JavaVersion.VERSION_1_8)
+    }
+}
+
+dependencies {
+     //hilt
+    implementation(&quot;com.google.dagger:hilt-android:2.40&quot;)
+    kapt(&quot;com.google.dagger:hilt-android-compiler:2.40&quot;)
+    //在viewmodel上使用hilt
+    implementation (&quot;androidx.hilt:hilt-lifecycle-viewmodel:1.0.0-alpha03&quot;)
+    kapt (&quot;androidx.hilt:hilt-compiler:1.0.0-beta01&quot;)
+}
+</code></pre>
+<p>在Application上添加@HiltAndroidApp注解，所有使用Hilt的应用必须要包含一个带有当前注解的Application，这个地方会触发Hilt的代码操作，而且这个注解会相应的生成一个应用级别的依赖容器。</p>
+<pre><code class="language-java">@HiltAndroidApp
+class ExampleApplication : Application() { ... }
+</code></pre>
+<p>到现在整个的配置已经完成了，下面我们来看它的使用。</p>
+<h2 id="3基础使用">3.基础使用</h2>
+<p>我们使用依赖注入，说白了就是要提供一个对象给外部使用，而外部不需要了解具体的创建过程，但是我们需要明确告知Hilt那些是必要的依赖项。</p>
+<pre><code class="language-java">/**
+构造函数注入就是其中的一种方法
+*/
+class Car @Inject constructor() {
+    val id:String = &quot;123123&quot;
+    val name:String = &quot;1231232&quot;
+}
+/**
+模拟调用
+*/
+@AndroidEntryPoint
+class MainActivity :AppCompatActivity(){
+    @Inject lateinit var car: Car
+        override fun onCreate(savedInstanceState: Bundle?) {
+            car.id
+        }
+}
+</code></pre>
+<p>上面的例子就是最简单的使用Hilt的过程，给类的构造添加@Inject注解，在能够进行依赖注入的地方，添加@AndroidEntryPoint注解，使用@Inject来标示注入的对象。<br>
+Hilt支持的Android类包括：</p>
+<ul>
+<li>Application</li>
+<li>Activity  仅支持ComponentActivity</li>
+<li>Fragment 仅支持androidx.Fragment</li>
+<li>View</li>
+<li>Service</li>
+<li>BroadcastReceiver</li>
+</ul>
+<p>而且Hilt注入的字段不能为私有字段，并且在构建时，Hilt会为Android类生成Dagger组件。然后Dagger会进行代码检查，并执行以下步骤：</p>
+<ul>
+<li>1.构建并验证依赖关系，确保没有未满足的依赖依赖关系且没有依赖循环。</li>
+<li>2.生成它在运行时用来创建实际对象及其依赖项的类。</li>
+</ul>
+<p>修改上面的例子：</p>
+<pre><code class="language-java">class Engine @inject constructor(){}
+/**
+构造函数注入就是其中的一种方法
+*/
+class Car @Inject constructor(val engine:Engine) {
+    val id:String = &quot;123123&quot;
+    val name:String = &quot;1231232&quot;
+}
+/**
+模拟调用
+*/
+@AndroidEntryPoint
+class MainActivity :AppCompatActivity(){
+    @Inject lateinit var car: Car
+        override fun onCreate(savedInstanceState: Bundle?) {
+            car.id
+        }
+}
+</code></pre>
+<p>我们在创建Car的对象时需要一个Engine对象，那么我们必要也要提供Engine的依赖项。<br>
+上面的情况是针对有构造函数的对象的，那么如果是接口的话要怎么处理？</p>
+<pre><code class="language-java">/**
+接口是没有构造函数的，所以我们需要带有@Binds注释的抽象函数
+*/
+interface Engine{
+    fun getEngineType():String
+}
+class ElectricEngine @Inject constructor() :Engine{
+    over fun getEngineType() = &quot;电气引擎&quot;
+}
+/**
+通过@Module标明当前是一个实例对象的提供者
+*/
+@Module
+/**
+这个它的作用域，标示当前的依赖项可以在项目中的所有的Activity中使用。
+*/
+@InstallIn(ActivityComponent::class)
+abstract class EngineModule{
+    @Binds
+    /**
+    注意ElectricEngine必须能够找到对应的依赖项，这里是在它的构造函数上添加了@Inject
+    */
+    abstract fun providesEngineImp(electricEngine:ElectricEngine):Engine
+}
+
+class Car @Inject constructor(val engine:Engine) {
+    val id:String = &quot;123123&quot;
+    val name:String = &quot;1231232&quot;
+}
+/**
+模拟调用
+*/
+@AndroidEntryPoint
+class MainActivity :AppCompatActivity(){
+    @Inject lateinit var car: Car
+        override fun onCreate(savedInstanceState: Bundle?) {
+            car.engine.getEngineType()
+        }
+}
+</code></pre>
+<p>使用过程看代码就可以，注意几个地方：</p>
+<ul>
+<li>1.提供的依赖项的Module必须要是abstract的</li>
+<li>2.对应的实现类也要提供依赖项</li>
+</ul>
+<p>接口可以有多个实现，那么这么个时候要这么处理呢？</p>
+<pre><code class="language-java">/**
+接口多实现的依赖注入
+*/
+interface Engine{
+    fun getEngineType():String
+}
+class ElectricEngine @Inject constructor() :Engine{
+    over fun getEngineType() = &quot;电气引擎&quot;
+}
+
+class OtherEngine @Inject constructor():Engine{
+    over fun getEngineType() = &quot;其他引擎&quot;
+}
+
+class Car @Inject constructor(val engine:Engine) {
+    val id:String = &quot;123123&quot;
+    val name:String = &quot;1231232&quot;
+}
+
+//实现用来区分类别的限定符
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class ElectricTypeEngine
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class OtherTypeEngine
+
+@Module
+@InstallIn(ActivityComponent::class)
+object CarModule{
+    /**
+    使用限定符来提供不同引擎的车
+    */
+    @ElectricTypeEngine
+    @Provides
+    /**
+    这里需要使用@Provides，之前尝试在@Binds上加限制符直接编译报错，在最终获取实例的地方要求加限制符的需要提供@Provides
+    */
+    fun providesElectricTypeCar(electricEngine: ElectricEngine):Car{
+        return Car(electricEngine)
+    }
+
+    @OtherTypeEngine
+    @Provides
+    fun providesOtherTypeCar(otherEngine: OtherEngine):Car{
+        return Car(otherEngine)
+    }
+}
+
+/**
+模拟调用
+*/
+@AndroidEntryPoint
+class MainActivity :AppCompatActivity(){
+    @ElectricTypeEngine
+    @Inject
+    lateinit var elecTypeCar: Car
+
+    @OtherTypeEngine
+    @Inject
+    lateinit var otherTypeCar: Car
+
+     override fun onCreate(savedInstanceState: Bundle?) {
+        elecTypeCar.engine.getEngineType()
+        otherTypeCar.engine.getEngineType()
+     }
+}
+</code></pre>
+<p>那么如果是三方的类呢？既不能通过构造函数也没有接口实现的方式，那么这里就可以使用 @Provides 注入实例，它的使用场景（三方的库，Retrofit、OkHttpClient、Room等），或者是需要使用构建者模式创建实例，还有上面的场景根据限制符来返回接口的不同实例对象。</p>
+<pre><code class="language-java">@Module
+@InstallIn(ActivityComponent::class)
+object HttpModule{
+    @provides
+    fun providesApiService():ApiService{
+        returen Retrofit.Builder()
+                    .baseUrl(&quot;&quot;)
+                    .build()
+                    .create(ApiService::class.java)
+    }
+}
+</code></pre>
+<h2 id="4一些注解的解释">4.一些注解的解释</h2>
+<p>在一些我们需要Applcition或者Activity的context的实话，看看Hilt为我们提供了什么<br>
+@ApplicationContext @ActivityContext</p>
+<pre><code class="language-java">//常见的一个场景，Adapter中需要context来进行初始化，
+//那么这里通过@ActivityContext提供了Activity的上下文
+class MyAdapter @Inject constructor(@ActvityContext val context:Context){
+}
+</code></pre>
+<p>在前面的@Module中我们使用了@InstallIn(ActivityComponent::class)来确定实例注入的范围，Hilt组件和注入对象的对应关系</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">Hilt组件</th>
+<th style="text-align:center">注入器面向的对象</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">ActivityRetainedComponent</td>
+<td style="text-align:center">ViewModel</td>
+</tr>
+<tr>
+<td style="text-align:center">ActivityComponent</td>
+<td style="text-align:center">Activity</td>
+</tr>
+<tr>
+<td style="text-align:center">FragmentComponent</td>
+<td style="text-align:center">Fragment</td>
+</tr>
+<tr>
+<td style="text-align:center">ViewComponent</td>
+<td style="text-align:center">View</td>
+</tr>
+<tr>
+<td style="text-align:center">ViewWithFragmentComponent</td>
+<td style="text-align:center">带有@WithFragmentBindings注释的View</td>
+</tr>
+<tr>
+<td style="text-align:center">ServiceComponent</td>
+<td style="text-align:center">Service</td>
+</tr>
+</tbody>
+</table>
+<p>有了组件关系，那么当我们在相应的组件范围内要求返回同一实例要怎么做？如果不添加作用域的话，每次我们获取到的都是一个新的对象，在有作用域的情况下，那么在相应作用域返回的都是同一实例。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">Android类</th>
+<th style="text-align:center">生成组件</th>
+<th style="text-align:center">作用域</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">Application</td>
+<td style="text-align:center">ApplicationComponent(这个在新版本中没有了)</td>
+<td style="text-align:center">@Singleton</td>
+</tr>
+<tr>
+<td style="text-align:center">ViewModel</td>
+<td style="text-align:center">ActivityRetainedComponent</td>
+<td style="text-align:center">@ActivityRetainedScope</td>
+</tr>
+<tr>
+<td style="text-align:center">Activity</td>
+<td style="text-align:center">ActivityComponent</td>
+<td style="text-align:center">@ActivityScoped</td>
+</tr>
+<tr>
+<td style="text-align:center">Fragment</td>
+<td style="text-align:center">FragmentComponent</td>
+<td style="text-align:center">@FragmentScoped</td>
+</tr>
+<tr>
+<td style="text-align:center">View</td>
+<td style="text-align:center">ViewComponent</td>
+<td style="text-align:center">@ViewScoped</td>
+</tr>
+<tr>
+<td style="text-align:center">带有@WithFragmentBindings的View</td>
+<td style="text-align:center">ViewWithFragmentComponent</td>
+<td style="text-align:center">@ViewScope</td>
+</tr>
+<tr>
+<td style="text-align:center">Service</td>
+<td style="text-align:center">ServiceComponent</td>
+<td style="text-align:center">@ServiceScoped</td>
+</tr>
+</tbody>
+</table>
+<p>组件层次结构，将模块安装到组件后，其绑定就可以用作该组件中其他绑定的依赖项，也可以用作组件层级结构中该组件下的任何子组件中其他绑定的依赖项：<br>
+<img src="file:///Users/heyueyang/Desktop/hilt-hierarchy.svg" alt="" loading="lazy"></p>
+<p>默认情况下，如果您在视图中执行字段注入，ViewComponent 可以使用 ActivityComponent 中定义的绑定。如果您还需要使用 FragmentComponent 中定义的绑定并且视图是 Fragment 的一部分，应将 @WithFragmentBindings 注释和 @AndroidEntryPoint 一起使用。</p>
+<p>而如果想要在非直接支持的地方使用依赖注入</p>
+<pre><code class="language-java">class TestEntryPoint {
+    /**
+    创建一个注入的点，以及相应的容器
+    */
+    @EntryPoint
+    @InstallIn(FragmentComponent::class)
+    interface CarProviderEntryPoint{
+        /**
+        这里是因为Car是有两种引擎组件的实现，我们需要告知它要那一种，如果只有一个实例的情况下不需要
+        */
+        @OtherTypeEngine
+        fun providerCar():Car
+    }
+
+/**
+使用来自 EntryPointAccessors 的适当静态方法。参数应该是组件实例或充当组件持有者的 @AndroidEntryPoint 对象。确保您以参数形式传递的组件和 EntryPointAccessors 静态方法都与 @EntryPoint 接口上的 @InstallIn 注释中的 Android 类匹配
+*/
+    fun getCar(fragment:Fragment):Car{
+      val carProviderPoint =   EntryPointAccessors.fromFragment(fragment,CarProviderEntryPoint::class.java)
+        return carProviderPoint.providerCar()
+    }
+}
+</code></pre>
+<h2 id="5hilt在viewmodel上的使用">5.Hilt在ViewModel上的使用</h2>
+<p>首先是依赖：</p>
+<pre><code class="language-java">dependencies {
+  implementation 'androidx.hilt:hilt-lifecycle-viewmodel:1.0.0-alpha01'
+  // When using Kotlin.
+  kapt 'androidx.hilt:hilt-compiler:1.0.0-alpha01'
+  // When using Java.
+  annotationProcessor 'androidx.hilt:hilt-compiler:1.0.0-alpha01'
+}
+</code></pre>
+<p>然后在ViewModel上添加注解,并添加带有@Inject的构造方法。</p>
+<pre><code class="language-java">@HiltViewModel
+class ExViewModel @Inject constructor():ViewModel() {
+
+}
+</code></pre>
+<p>然后，带有 @AndroidEntryPoint 注释的 Activity 或 Fragment 可以使用 ViewModelProvider 或 by viewModels() KTX 扩展照常获取 ViewModel 实例：</p>
+<pre><code class="language-java">@AndroidEntryPoint
+class ExampleActivity : AppCompatActivity() {
+  private val viewModel: ExViewModel by viewModels()
+}
+</code></pre>
+<p>但有时候我们需要创建带有参数的ViewModel,例如根据不同的类型获取不同的数据集</p>
+<pre><code class="language-java">/**
+相应的属性需要添加@Assisted，并且构造方法添加@AssistedInject
+*/
+class TestViewModel @AssistedInject constructor(@Assisted val pokeName:String):ViewModel() {
+
+    /**
+    提供一个辅助工厂
+    */
+    @dagger.assisted.AssistedFactory
+    interface AssistedFactory{
+        fun create(name:String):TestViewModel
+    }
+    /**
+    对外提供构建的工厂
+    */
+    companion object{
+        fun provideFactory(
+            factory: AssistedFactory,
+            name:String
+        ):ViewModelProvider.Factory = object :ViewModelProvider.Factory{
+            override fun &lt;T : ViewModel&gt; create(modelClass: Class&lt;T&gt;): T {
+                return factory.create(name) as T
+            }
+        }
+    }
+}
+/**
+模拟调用
+*/
+@AndroidEntryPoint
+class TestActivity:AppCompatActivity() {
+
+    @Inject lateinit var factory:TestViewModel.AssistedFactory
+
+    val viewModel:TestViewModel by viewModels {
+        TestViewModel.provideFactory(factory,&quot;123123&quot;)
+    }
+}
+</code></pre>
+<p>就是在构建ViewModel时需要自己创建构建工厂，来实现参数的数值，在ViewModel创建时设置为自己创建的工厂。</p>
+<h1 id="2021再见今年的最后一篇文章了">2021再见，今年的最后一篇文章了。</h1>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#1%E4%BB%80%E4%B9%88%E6%98%AF%E4%BE%9D%E8%B5%96%E6%B3%A8%E5%85%A5">1.什么是依赖注入</a></li>
+<li><a href="#2hilt%E9%85%8D%E7%BD%AE">2.Hilt配置</a></li>
+<li><a href="#3%E5%9F%BA%E7%A1%80%E4%BD%BF%E7%94%A8">3.基础使用</a></li>
+<li><a href="#4%E4%B8%80%E4%BA%9B%E6%B3%A8%E8%A7%A3%E7%9A%84%E8%A7%A3%E9%87%8A">4.一些注解的解释</a></li>
+<li><a href="#5hilt%E5%9C%A8viewmodel%E4%B8%8A%E7%9A%84%E4%BD%BF%E7%94%A8">5.Hilt在ViewModel上的使用</a></li>
+</ul>
+</li>
+<li><a href="#2021%E5%86%8D%E8%A7%81%E4%BB%8A%E5%B9%B4%E7%9A%84%E6%9C%80%E5%90%8E%E4%B8%80%E7%AF%87%E6%96%87%E7%AB%A0%E4%BA%86">2021再见，今年的最后一篇文章了。</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/shou-shi-kong-zhi-yi-ji-duo-dian-hong-kong/">
+              <h3 class="post-title">
+                手势控制以及多点触控
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

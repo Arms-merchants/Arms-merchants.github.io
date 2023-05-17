@@ -1,0 +1,324 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ViewPager的源码分析--TODO | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1684231823842">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="ViewPager的源码分析--TODO | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="这是在基于总的Fragment数量为5，并且第一次数据加载已经完成，从0的tab切换到2的tab的过程，limit为1，分析2的创建以及3的预加载，还有0的destory：
+    void populate(int newCurrentI..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1684231823842" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              ViewPager的源码分析--TODO
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-11-25
+              </span>
+              <span>
+                4 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1637781127773-5ce8c6d7638b?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=774&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>这是在基于总的Fragment数量为5，并且第一次数据加载已经完成，从0的tab切换到2的tab的过程，limit为1，分析2的创建以及3的预加载，还有0的destory：</p>
+<pre><code class="language-java">    void populate(int newCurrentItem) {
+        //newCurrentItem =2
+        ViewPager.ItemInfo oldCurInfo = null;
+        if (mCurItem != newCurrentItem) {
+            //oldCurInfo = 0
+            oldCurInfo = infoForPosition(mCurItem);
+            //mCurItem = 2
+            mCurItem = newCurrentItem;
+        }
+
+        mAdapter.startUpdate(this);
+        //mOffscreenPageLimit = 1
+        final int pageLimit = mOffscreenPageLimit;
+        //startPos = 1
+        final int startPos = Math.max(0, mCurItem - pageLimit);
+        //n= 5
+        final int N = mAdapter.getCount();
+        //endPos = 3
+        final int endPos = Math.min(N - 1, mCurItem + pageLimit);
+
+        // Locate the currently focused item or add it if needed.
+        int curIndex = -1;
+        ViewPager.ItemInfo curItem = null;
+        // mItems.size() = 2 (0,1)
+
+        for (curIndex = 0; curIndex &lt; mItems.size(); curIndex++) {
+            final ViewPager.ItemInfo ii = mItems.get(curIndex);
+            if (ii.position &gt;= mCurItem) {
+                if (ii.position == mCurItem) curItem = ii;
+                break;
+            }
+        }
+        //curIndex =2
+        if (curItem == null &amp;&amp; N &gt; 0) {
+            curItem = addNewItem(mCurItem, curIndex);
+        }
+        //把index =2的fragment加入了
+
+        // Fill 3x the available width or up to the number of offscreen
+        // pages requested to either side, whichever is larger.
+        // If we have no current item we have no work to do.
+        if (curItem != null) {
+            float extraWidthLeft = 0.f;
+            //itemIndex = 1
+            int itemIndex = curIndex - 1;
+            //拿到1的ItemInfo
+            ViewPager.ItemInfo ii = itemIndex &gt;= 0 ? mItems.get(itemIndex) : null;
+            final int clientWidth = getClientWidth();
+            final float leftWidthNeeded = clientWidth &lt;= 0 ? 0 :
+                    2.f - curItem.widthFactor + (float) getPaddingLeft() / (float) clientWidth;
+            //pos = 1
+            for (int pos = mCurItem - 1; pos &gt;= 0; pos--) {
+                if (extraWidthLeft &gt;= leftWidthNeeded &amp;&amp; pos &lt; startPos) {
+                    if (ii == null) {
+                        break;
+                    }
+                    if (pos == ii.position &amp;&amp; !ii.scrolling) {
+                        mItems.remove(itemIndex);
+                        mAdapter.destroyItem(this, pos, ii.object);
+                        if (DEBUG) {
+                            Log.i(TAG, &quot;populate() - destroyItem() with pos: &quot; + pos
+                                    + &quot; view: &quot; + ((View) ii.object));
+                        }
+                        itemIndex--;
+                        curIndex--;
+                        ii = itemIndex &gt;= 0 ? mItems.get(itemIndex) : null;
+                    }
+                } else if (ii != null &amp;&amp; pos == ii.position) {
+                    extraWidthLeft += ii.widthFactor;
+                    itemIndex--;
+                    //在1的时候拿到0的ItemInfo
+                    ii = itemIndex &gt;= 0 ? mItems.get(itemIndex) : null;
+                } else {
+                    ii = addNewItem(pos, itemIndex + 1);
+                    extraWidthLeft += ii.widthFactor;
+                    curIndex++;
+                    ii = itemIndex &gt;= 0 ? mItems.get(itemIndex) : null;
+                }
+            }
+
+            float extraWidthRight = curItem.widthFactor;
+            itemIndex = curIndex + 1;
+            if (extraWidthRight &lt; 2.f) {
+                ii = itemIndex &lt; mItems.size() ? mItems.get(itemIndex) : null;
+                final float rightWidthNeeded = clientWidth &lt;= 0 ? 0 :
+                        (float) getPaddingRight() / (float) clientWidth + 2.f;
+                for (int pos = mCurItem + 1; pos &lt; N; pos++) {
+                    if (extraWidthRight &gt;= rightWidthNeeded &amp;&amp; pos &gt; endPos) {
+                        if (ii == null) {
+                            break;
+                        }
+                        if (pos == ii.position &amp;&amp; !ii.scrolling) {
+                            mItems.remove(itemIndex);
+                            mAdapter.destroyItem(this, pos, ii.object);
+                            if (DEBUG) {
+                                Log.i(TAG, &quot;populate() - destroyItem() with pos: &quot; + pos
+                                        + &quot; view: &quot; + ((View) ii.object));
+                            }
+                            ii = itemIndex &lt; mItems.size() ? mItems.get(itemIndex) : null;
+                        }
+                    } else if (ii != null &amp;&amp; pos == ii.position) {
+                        extraWidthRight += ii.widthFactor;
+                        itemIndex++;
+                        ii = itemIndex &lt; mItems.size() ? mItems.get(itemIndex) : null;
+                    } else {
+                        ii = addNewItem(pos, itemIndex);
+                        itemIndex++;
+                        extraWidthRight += ii.widthFactor;
+                        ii = itemIndex &lt; mItems.size() ? mItems.get(itemIndex) : null;
+                    }
+                }
+            }
+
+            calculatePageOffsets(curItem, curIndex, oldCurInfo);
+
+            mAdapter.setPrimaryItem(this, mCurItem, curItem.object);
+        }
+
+        mAdapter.finishUpdate(this);
+
+        // Check width measurement of current pages and drawing sort order.
+        // Update LayoutParams as needed.
+        //3
+        final int childCount = getChildCount();
+        for (int i = 0; i &lt; childCount; i++) {
+            final View child = getChildAt(i);
+            final ViewPager.LayoutParams lp = (ViewPager.LayoutParams) child.getLayoutParams();
+            lp.childIndex = i;
+            if (!lp.isDecor &amp;&amp; lp.widthFactor == 0.f) {
+                // 0 means requery the adapter for this, it doesn't have a valid width.
+                final ViewPager.ItemInfo ii = infoForChild(child);
+                if (ii != null) {
+                    lp.widthFactor = ii.widthFactor;
+                    lp.position = ii.position;
+                }
+            }
+        }
+        sortChildDrawingOrder();
+
+        if (hasFocus()) {
+            View currentFocused = findFocus();
+            ViewPager.ItemInfo ii = currentFocused != null ? infoForAnyChild(currentFocused) : null;
+            if (ii == null || ii.position != mCurItem) {
+                for (int i = 0; i &lt; getChildCount(); i++) {
+                    View child = getChildAt(i);
+                    ii = infoForChild(child);
+                    if (ii != null &amp;&amp; ii.position == mCurItem) {
+                        if (child.requestFocus(View.FOCUS_FORWARD)) {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/android-yi-jian-da-bao-shang-chuan-pu-gong-ying-bing-fa-song-xiao-xi-dao-qi-ye-wei-xin-todo/">
+              <h3 class="post-title">
+                Android一键打包上传蒲公英并发送消息到企业微信
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

@@ -1,0 +1,994 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>协程基本概念以及一些使用分析 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1684231823842">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="协程基本概念以及一些使用分析 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="Kotlin中文社区 的个人主页 - 文章 - 掘金
+协程是一个轻量级的线程封装，内部基于线程池API实现。协程能够使用阻塞的方式写出非阻塞的代码，解决并发中常见的回调地狱。
+1.协程的使用
+GlobalScope.launch(Dispa..." />
+    <meta name="keywords" content="kotlin" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1684231823842" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              协程基本概念以及一些使用分析
+            </h2>
+            <div class="post-info">
+              <span>
+                2020-11-05
+              </span>
+              <span>
+                25 min read
+              </span>
+              
+                <a href="https://arms-merchants.github.io/tag/kotlin/" class="post-tag">
+                  # kotlin
+                </a>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1593642532842-98d0fd5ebc1a?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDF8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=1469&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p><a href="https://juejin.cn/user/2365804754513085/posts">Kotlin中文社区 的个人主页 - 文章 - 掘金</a><br>
+协程是一个轻量级的线程封装，内部基于线程池API实现。协程能够使用阻塞的方式写出非阻塞的代码，解决并发中常见的回调地狱。</p>
+<h2 id="1协程的使用">1.协程的使用</h2>
+<pre><code class="language-java">GlobalScope.launch(Dispatchers.Main) {
+    val res = getResult(2)
+    mNumTv.text = res.toString()
+}
+</code></pre>
+<p>简单的启动协程，可以看出协程由三个部分构成GlobalScope，Dispathchers，launch，他们分别对应协程的作用域，调度器和协程构建器。</p>
+<h4 id="11协程作用域">1.1协程作用域</h4>
+<p>协程的作用域用三种：</p>
+<ul>
+<li>runBlocking:顶层函数，它和coroutineScope不一样，它会阻塞当前线程来等待，所以这个方法在业务中不适用。</li>
+<li>GlobalScope:全局协程作用域，可以在整个应用的生命周期中操作，取消的时候需要考虑时机，所以业务中也不适用。</li>
+<li>自定义作用域：自定义作用域，不会造成内存泄漏。</li>
+</ul>
+<p>补充-》</p>
+<ul>
+<li>通过GlobalScope启动的协程单独启动一个协程作用域，也就是如果在一个协程的内部又通过GlobalScope去启动一个协程，那么这个新启动的协程的作用域是和外部协程没有关系的（也就是如果你取消了外部协程那么它不会影响到GS的，这就出问题了），内部的子协程遵从默认的作用域规则。</li>
+<li>coroutineScope是继承外部Job的上下文创建作用域，在其内部的取消操作是双向传播，子协程未捕获的异常也会向上传递给父协程。它更适合一系列对等的协程并发的完成一项任务，任何一个子协程异常退出，那么整体将退出</li>
+<li>supervisorScope同样继承外部作用域的上下文，但其内部的取消操作是单向传播，父协程向子协程传播，反过来则不然，这意味这子协程发生了异常不会影响父协程和其他兄弟协程。它更适合一些独立不相干的任务，任何一个出现问题，不会影响到其他的工作。</li>
+</ul>
+<p>协程作用域的使用建议：</p>
+<ol>
+<li>对于没有协程作用域，但需要启动协程的时候，适合使用GlobalScope</li>
+<li>对于已经有协程作用域的情况（例如通过GlobalScope启动的协程体内），直接用协程启动器启动</li>
+<li>对于明确要求子协程之间相互独立不干扰时，使用supervisorScope</li>
+<li>对于通过标准库 API 创建的协程，这样的协程比较底层，没有 Job、作用域等概念的支撑，例如我们前面提到过 suspend main 就是这种情况，对于这种情况优先考虑通过 coroutineScope 创建作用域；更进一步，大家尽量不要直接使用标准库 API，除非你对 Kotlin 的协程机制非常熟悉。</li>
+</ol>
+<p>既然GlobalScope的作用域是整个应用的生命周期，那么我们在Activity和Fragment中就不能使用GlobalScope，使用的话可以能会造成内存泄漏，自定义作用域：</p>
+<pre><code class="language-java">//声明作用域
+ val scope = MainScope()
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val tv = TextView(this)
+        setContentView(tv)
+        //启动协程
+        scope.launch(Dispatchers.Unconfined) {
+            val one = getResult(20)
+            val two = getResult(40)
+            tv.text = (one + two).toString()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        //销毁时取消作用域
+        scope.cancel()
+    }
+    
+    //在协程中调用的方法需要添加suspend
+    private suspend fun getResult(num: Int): Int {
+        delay(5000)
+        return num * num
+    }
+
+</code></pre>
+<h4 id="12调度器">1.2调度器</h4>
+<p>调度器的作用是告诉协程体运行在那个线程</p>
+<ul>
+<li>Dispatchers.Main:指定执行的线程是主线程</li>
+<li>Dispatchers.IO:指定执行的线程是IO线程</li>
+<li>Dispatchers.Default:默认的调度器，适合执行CPU密集性的任务</li>
+<li>Dispathcers.Unconfined:非限制的调度器，指定的线程可能会随着挂起的函数发生变化</li>
+</ul>
+<p>但是当我们指定一个协程执行在主线程时，那么我们如何在这个主线程中进行一个网络请求，我们都知道在Android中网络请求是不能在主线程中进行的，那么这个时候我们就需要进行线程的切换，这里就需要使用到withContext函数来进行线程的切换</p>
+<pre><code class="language-java">  // Dispatchers.Main
+    suspend fun fetchDocs() {
+        // Dispatchers.Main
+        val result = get(&quot;hahaha&quot;)
+        // Dispatchers.Main
+    }
+
+    // Dispatchers.Main
+    suspend fun get(url: String) =
+        // Dispatchers.IO
+        withContext(Dispatchers.IO) {
+            // Dispatchers.IO
+        }
+
+</code></pre>
+<p>通过协程可以细粒度的控制线程调度，通过withContext可以控制任意一句代码运行在什么线程上，而不用引入回调来获取结果。这里要提到一个概念，主线程安全，就是每个挂起的函数都能引起主线程卡住的问题，如果它设计到任何磁盘、网络或者CPU密集型任务，那么需要使用withContext来确保主线程调用安全的。</p>
+<h4 id="13suspend">1.3suspend</h4>
+<p>suspend使用限制：在协程内部使用或者在另外一个suspend方法里使用<br>
+suspend方法能够使协程执行暂停，等待执行完毕后返回结果，同时不会阻塞线程。<br>
+而且暂停协程里方法的执行，直到方法返回结果，这样就可以不用写callback来获取结果，可以使用同步的方式来写异步代码。<br>
+suspend的函数不是只能运行在后台线程的，它的运行线程是根据协程调度器所指定的线程。</p>
+<figure data-type="image" tabindex="1"><img src="file:///Users/heyueyang/Desktop/16af307135e81673_tplv-t2oaga2asx-watermark.awebp" alt="16af307135e81673?imageslim" loading="lazy"></figure>
+<h4 id="14开启一个协程">1.4开启一个协程</h4>
+<p>通过launch和async来开启一个新的协程，launch返回的是一个job对象，我们可以通过调用job.cancel()来取消这个协程。<br>
+async是创建一个协程在之后返回一个Deferred<T>对象，我们可以通过Deferred.await()去获取返回值，</p>
+<p>launch和async很大的一个区别是异常处理。async期望你通过调用await来获取结果（或异常），所以它默认不会抛出异常。这就意味着使用async启动新的协程，它会悄悄的把异常丢弃。</p>
+<h4 id="协程的启动模式">协程的启动模式</h4>
+<p>1.DEFAULT 立即执行<br>
+2.LAZY 懒加载模式，需要手动调用join或则await不然协程不会执行<br>
+3.ATOMIC 立即执行协程体，而且协程体中除了挂起函数，都会无视cancel状态，它的意思就是如果协程的启动模式为ATOMIC的话，那么只要在协程中没有挂起函数，那么哪怕它调用了cancel，它也会全部执行完。</p>
+<pre><code class="language-java">     val job = scope.launch(start = CoroutineStart.ATOMIC) {
+            Logger.e(&quot;start&quot;)
+            var count = 0
+            for (i in 0 until 10000) {
+                count++
+            }
+            Logger.e(&quot;end:$count&quot;)
+        }
+        job.cancel()
+         //它的输出为
+        //start
+        //end：10000
+        //也就是协程启动模式为ATOMIC的哪怕是协程调用取消，只有协程中没有挂的函数操作，那么它必定会执行完再结束
+        val job2 = scope.launch(start = CoroutineStart.ATOMIC) {
+            Logger.e(&quot;start&quot;)
+            var count = 0
+            for (i in 0 until 10000) {
+                count++
+            }
+            try {
+                delay(1000)
+            } catch (e: Exception) {
+                // kotlinx.coroutines.JobCancellationException: StandaloneCoroutine was cancelled; job=StandaloneCoroutine{Cancelling}@d6916df
+                e.printStackTrace()
+            }
+            Logger.e(&quot;end:$count&quot;)
+        }
+        job2.cancel()
+        //输出：
+        //start
+        //在这个协程体内有delay的函数执行，而这个会引起协程的挂起，而挂起函数发现当前的协程处于cancel状态，就会抛出JobCancellationException,导致后续
+        //代码不能执行，如果使用try、catch包裹delay方法，那么后续代码会继续执行。
+        
+</code></pre>
+<ol start="4">
+<li>UNDISPATCHED 立即在当前线程中执行协程体，直到调用第一个挂起函数，挂起函数之后的代码执行的线程取决于当前协程体的上下文线程调度器（GlobalScope除外，因为GlobalScope.launch启动的是第一个顶级协程，无法关联当前协程的上下文）</li>
+</ol>
+<pre><code class="language-java">runBlocking {
+    println(&quot;print0: &quot; + Thread.currentThread().name)
+    launch(context = Dispatchers.Default, start = CoroutineStart.UNDISPATCHED) {
+        println(&quot;print1: &quot; + Thread.currentThread().name)
+        delay(2000)//延迟2秒
+        println(&quot;print2: &quot; + Thread.currentThread().name)
+    }
+}
+//打印结果
+print0: main
+print1: main
+print2: DefaultDispatcher-worker-1
+</code></pre>
+<p>补充-》<br>
+启动协程除了launch和async之外，还有actor和produce，其中actor和launch的行为类似，在未捕获的异常出现以后，会被当初未处理的异常抛出。而async和produce则主要用来输出结果，他们内部的异常只在外部消费他们的时候抛出。<br>
+协程还有个操作join，但是这个join关心的只是当前的协程是否完成，至于它是怎么完成的，是否是因为错误而引起的结束它都不关心，并且它会吃掉未处理的异常</p>
+<h4 id="15结构并发">1.5结构并发</h4>
+<p>为了避免协程泄漏，kotlin引入了结构化并发。结构化并集合了语言特性和最佳实践，遵循这个原则将帮助你追踪协程中的所有任务。<br>
+在Android中使用结构化并发能够做3件事情：</p>
+<ol>
+<li>取消不再需要的任务</li>
+<li>追踪所有正在进行的任务</li>
+<li>协程失败时的错误信号</li>
+</ol>
+<p>协程必须运行在 CoroutineScope 中，CoroutineScope会追踪你的协程，即使协程已经被挂起。CoroutineScope不会去执行协程，它仅仅是保证你不会丢失对协程的追踪。CoroutineScope赋予你创建新协程的能力，并且它可以需要所有由它开启的协程。</p>
+<p>结构化并发保证当协程作用域取消，其中的所有协程都会取消。<br>
+结构化并发？？？<br>
+结构化并发保证当挂起函数返回时，它的所有任务都已经完成。<br>
+结构化并发的作用：</p>
+<ul>
+<li>1.当作用域取消，其中的协程也会取消</li>
+<li>2.当挂起函数返回，其中的所有任务都已完成</li>
+<li>3.当协程发生错误，其调用者会得到通知</li>
+</ul>
+<p>coroutineScope和supervisorScope让你可以安全的在挂起函数中启动协程。</p>
+<pre><code class="language-java">suspend fun fetchTwoDocs() {
+    coroutineScope {
+        launch { fetchDoc(1) }
+        async { fetchDoc(2) }
+    }
+}
+</code></pre>
+<p>尽管上面的代码没有在任何地方显示的声明要等待协程的任务执行完程，看起来当协程还在运行时候，fetchDoc方法就会返回。为了结构化并发和避免任务鞋扣，我们希望确保当挂起函数（例如fetchDoc）返回时，它的所有任务都已经完成。这就意味着，由fetchDoc启动的协程都会先于它返回之前执行结束。<br>
+Kotlin通过coroutineScope构建器确保fetchDocs中的任务不会泄漏。coroutineScope构建器知道在其中的所有协程都执行结束时才会挂起自己。正因为如此，在coroutineScope中的所有协程尚未结束之前就从fetchDoc中返回是不可能的。</p>
+<p>coroutineScope和supervisorScope会等待所有子协程执行结束。<br>
+使用coroutineScope或者supervisorScope可以让你在任务挂起函数中安全的启动协程，尽管这是一个新的协程，但是不会造成意外的泄漏任务，因为所有新的协程都完成了你才可以挂起调用者。<br>
+下面是一个在挂起函数中进行了一个1000次启动子协程的操作的启动和返回过程：<br>
+<img src="file:///Users/heyueyang/Desktop/16b08df07ebe64c6_tplv-t2oaga2asx-watermark.awebp" alt="avatar" loading="lazy"></p>
+<p>coroutineScope和supervisorScope它们之间最大的不同就是，当其中任意一个子协程失败时，coroutineScope会取消，但是supervisorScope不会（比如是多个网络请求的请求下，如果不想因为其中一个网络请求的失败影响到其他的，这个时候我们就可以使用supervisorScope）。</p>
+<p>首先看一下viewmodel的扩展</p>
+<pre><code class="language-java">val ViewModel.viewModelScope: CoroutineScope
+        get() {
+            val scope: CoroutineScope? = this.getTag(JOB_KEY)
+            if (scope != null) {
+                return scope
+            }
+            return setTagIfAbsent(JOB_KEY,
+                CloseableCoroutineScope(SupervisorJob() + Dispatchers.Main.immediate))
+        }
+
+internal class CloseableCoroutineScope(context: CoroutineContext) : Closeable, CoroutineScope {
+    override val coroutineContext: CoroutineContext = context
+
+    override fun close() {
+        coroutineContext.cancel()
+    }
+}
+//在viewmodel中维护有一个HaseMap的集合
+ private final Map&lt;String, Object&gt; mBagOfTags = new HashMap&lt;&gt;();
+ //这个集合存放的就是CoroutineScope，当viewmodel的观察者触发页面的onDestory的事件时会有ViewModelStore存储的viewmodel调用clear方法获取所有实现Closeable的对象调用close（）
+ 
+ @MainThread
+    final void clear() {
+        mCleared = true;
+        // Since clear() is final, this method is still called on mock objects
+        // and in those cases, mBagOfTags is null. It'll always be empty though
+        // because setTagIfAbsent and getTag are not final so we can skip
+        // clearing it
+        if (mBagOfTags != null) {
+            synchronized (mBagOfTags) {
+                for (Object value : mBagOfTags.values()) {
+                    // see comment for the similar call in setTagIfAbsent
+                    closeWithRuntimeException(value);
+                }
+            }
+        }
+        onCleared();
+    }
+    
+    private static void closeWithRuntimeException(Object obj) {
+        if (obj instanceof Closeable) {
+            try {
+                ((Closeable) obj).close();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+ 
+</code></pre>
+<p>SupervisorJob()是什么？Dispatchers.Main.immediate是什么？<br>
+SupervisorJob() + Dispatchers.Main.immediate作用又是什么？<br>
+CloseableCoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)<br>
+Dispatchers.Main.immediate是viewModelScope的默认CoroutineDispatcher</p>
+<p><a href="https://juejin.im/post/6844903860633337864">在 Android 上使用协程（三） ：Real Work</a><br>
+这是其中的一段话，那这个样子的话，就应该说我在项目中的封装是有问题，request对象也是不具有生命周期的，协程相关的操作应该还是放在viewmodel中<br>
+Repository 是 Android Architecture<br>
+Components 架构的可选部分。如果你在 app 中使用了 repository 或者相似作用的层级，它更偏向于使用挂起函数。由于 repository 没有生命周期，它仅仅只是一个对象，所以它没有办法做资源清理工作。在 repository 中启动的协程将有可能泄露。</p>
+<h3 id="16一次性请求模式">1.6一次性请求模式</h3>
+<p>协程在添加到ViewModel、Repositiory和Room中，每一层都有不同的责任。</p>
+<ul>
+<li>1.ViewModel在主线程启动协程，一旦有了结果就结束。</li>
+<li>2.Repository提供挂起函数并保证它们主线程安全。</li>
+<li>3.数据库和网络层提供挂起函数并保证它们主线安全。</li>
+</ul>
+<p>ViewModel负责启动协程，保证用户离开界面时取消协程。它本身不做昂贵的操作，而是依赖其他层来做，一旦有了结果，就使用LiveData发送给UI界面。也正因为ViewModel不做昂贵的操作，所以它在主线程启动协程。通过主线程启动，当结果可用它可以更快的响应用户事件。</p>
+<p>Repository提供挂起函数来访问数据。它通常不会启动长生命周期的协程，因为它没办法取消它们。无论何时Repository需要做昂贵的操作，它都需要使用withContext来提供主线程安全的接口。</p>
+<p>数据层（网络或数据库）总数提供挂起函数。使用Kotlin协程的时候需要保证这些关起函数是主线程安全的，Room和Retrofit都遵循这个一原则。</p>
+<h4 id="17协程的并发">1.7协程的并发</h4>
+<p>方案一取消前一个任务<br>
+方案二将下一个任务入队<br>
+方案三加入前一个任务<br>
+对应的操作可以在这个类中查实现，这个是在第三篇文章中提到的概念。<br>
+<a href="https://gist.github.com/objcode/7ab4e7b1df8acd88696cb0ccecad16f7">Helpers to control concurrency for one shot requests using Kotlin coroutines. · GitHub</a></p>
+<p>秉心说TM的三篇在Android上使用协程的翻译文章<br>
+<a href="https://juejin.im/post/6844903855667298312">在 Android 上使用协程（一）：Getting The Background</a><br>
+<a href="https://juejin.im/post/6844903857072373773">在 Android 上使用协程（二）：Getting started</a><br>
+<a href="https://juejin.im/post/6844903860633337864">在 Android 上使用协程（三） ：Real Work</a></p>
+<h3 id="2在协程中使用流">2在协程中使用流</h3>
+<h4 id="1koltin中的相应编程flow和rxjava的对比">1.Koltin中的相应编程Flow和RxJava的对比</h4>
+<pre><code class="language-java">
+ fun createFlow(): Flow&lt;Int&gt; =flow {
+        for (i in 1..10) {
+        //调用emit发射数据
+            emit(i)
+        }
+    }
+        //把上面的循环，快速操作符
+        //(1..10).asFlow()
+
+ lifecycleScope.launch {
+            createFlow()
+                //collect作为消费者来消费数据
+                .collect { num -&gt;
+                    Logger.e(&quot;current num$num&quot;)
+                }
+        }
+</code></pre>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">对比</th>
+<th style="text-align:center">Flow</th>
+<th style="text-align:center">RxJava</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">数据源</td>
+<td style="text-align:center">Flow&lt; T &gt;</td>
+<td style="text-align:center">Observable&lt; T &gt;</td>
+</tr>
+<tr>
+<td style="text-align:center">订阅</td>
+<td style="text-align:center">collect</td>
+<td style="text-align:center">subscribe</td>
+</tr>
+</tbody>
+</table>
+<p>线程切换</p>
+<pre><code class="language-java">
+lifecycleScope.launch {
+    // 创建一个协程 Flow&lt;T&gt;
+    createFlow()
+        // 将数据发射的操作放到 IO 线程中的协程
+        .flowOn(Dispatchers.IO)
+        .collect { num -&gt;
+            // 具体的消费处理
+            // ...
+        }
+    }
+}
+
+</code></pre>
+<p>和RxJava的对比</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">操作</th>
+<th style="text-align:center">Flow</th>
+<th style="text-align:center">RxJava</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">改变数据发射的线程</td>
+<td style="text-align:center">flowOn</td>
+<td style="text-align:center">subscribeOn</td>
+</tr>
+<tr>
+<td style="text-align:center">改变消费数据的线程</td>
+<td style="text-align:center">launchIn</td>
+<td style="text-align:center">observeOn</td>
+</tr>
+<tr>
+<td style="text-align:center">那么在协程中消费者所在的线程是怎么确定的，collect因为是挂起函数，那么它必然要在协程作用域内，那么它的运行线程就是协程所在线程。</td>
+<td style="text-align:center"></td>
+<td style="text-align:center"></td>
+</tr>
+<tr>
+<td style="text-align:center">注意launchIn使用比较特殊。</td>
+<td style="text-align:center"></td>
+<td style="text-align:center"></td>
+</tr>
+</tbody>
+</table>
+<p>异常</p>
+<pre><code class="language-java">lifecycleScope.launch {
+    flow {
+        //...
+    }.catch {e-&gt;
+
+    }.collect(
+
+    )
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">对比</th>
+<th style="text-align:center">Flow</th>
+<th style="text-align:center">RxJava</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">异常</td>
+<td style="text-align:center">catch</td>
+<td style="text-align:center">onError</td>
+</tr>
+</tbody>
+</table>
+<p>完成</p>
+<pre><code class="language-java">lifecycleScope.launch {
+    createFlow()
+        .onCompletion {
+            // 处理完成操作
+        }
+        .collect {
+
+        }
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">对比</th>
+<th style="text-align:center">Flow</th>
+<th style="text-align:center">RxJava</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">完成</td>
+<td style="text-align:center">onCompletion</td>
+<td style="text-align:center">onComplete</td>
+</tr>
+</tbody>
+</table>
+<h4 id="2flow的特点">2.Flow的特点</h4>
+<ul>
+<li>冷流</li>
+<li>有序</li>
+<li>协作取消</li>
+</ul>
+<p>冷流就是当触发collect方法的时候，数据才开始发射，也就是只有消费时才会生产数据流。</p>
+<pre><code class="language-java">lifecycleScope.launch {
+//这里虽然流创建好了，但是数据一直到五行collect才开始发射。
+    val flow = (1..10).asFlow().flowOn(Dispatchers.Main)
+
+    flow.collect { num -&gt;
+            // 具体的消费处理
+            // ...
+        }
+    }
+}
+</code></pre>
+<p>有序的概念就是如果在流的过程中有多个处理步骤，那么都是一个数据走完全部流程，下一个数据才会开始走流程。</p>
+<pre><code class="language-java">lifecycleScope.launch {
+    flow {
+        for(i in 1..3) {
+            Log.e(&quot;Flow&quot;,&quot;$i emit&quot;)
+            emit(i)
+        }
+    }.filter {
+        Log.e(&quot;Flow&quot;,&quot;$it filter&quot;)
+        it % 2 != 0
+    }.map {
+        Log.e(&quot;Flow&quot;,&quot;$it map&quot;)
+        &quot;${it * it} money&quot;
+    }.collect {
+        Log.e(&quot;Flow&quot;,&quot;i get $it&quot;)
+    }
+}
+
+输出日志
+E/Flow: 1 emit
+E/Flow: 1 filter
+E/Flow: 1 map
+E/Flow: i get 1 money
+E/Flow: 2 emit
+E/Flow: 2 filter
+E/Flow: 3 emit
+E/Flow: 3 filter
+E/Flow: 3 map
+E/Flow: i get 9 money
+</code></pre>
+<p>Flow采用和协程一样的协作取消，也就是说，Flow的collect只能在可取消的挂起函数中挂起的时候取消，否则不能取消。</p>
+<pre><code class="language-java">lifecycleScope.launch {
+    val f = flow {
+        for (i in 1..3) {
+            delay(500)
+            Log.e(TAG, &quot;emit $i&quot;)
+            emit(i)
+        }
+    }
+    withTimeoutOrNull(1600) {
+        f.collect {
+            delay(500)
+            Log.e(TAG, &quot;consume $it&quot;)
+        }
+    }
+    Log.e(TAG, &quot;cancel&quot;)
+}
+
+输出日志
+emit 1
+consume 1
+emit 2
+cancel 
+</code></pre>
+<p>flow的创建方式有flow{},</p>
+<pre><code class="language-java">flow{
+  for(i in 1..3){
+      emit(i)
+  }
+}
+
+</code></pre>
+<p>flowOf()</p>
+<pre><code class="language-java">
+flowof(1,2,3).collect{
+}
+</code></pre>
+<p>asFlow</p>
+<pre><code class="language-java">listOf(1,2,3).asFlow().collect{
+}
+
+</code></pre>
+<p>channelFlow()</p>
+<pre><code class="language-java">channelFlow{
+  for(i in 1..5){
+    delay(100)
+    send(i)
+  }
+}.collect{
+  
+}
+</code></pre>
+<p>其中有区别的是flow和channel ，flow是coloStream，在没有切换线程线程的情况下，生产者和消费者是同步非阻塞的。<br>
+而channel是HotStream，而channelFlow实现了生产者和消费者异步非阻塞模型。</p>
+<h3 id="补充">补充=》</h3>
+<h4 id="末端操作符号">末端操作符号</h4>
+<p>collect是flow的最基本末端操作符。还有其他的末端操作符，大体分为两类：</p>
+<ol>
+<li>集合类型转换操作，包括toList、toSet等</li>
+<li>聚合操作，包括将Flow规约到单值的reduce、flod等，以及获得单个元素的操作sigle、singleOrNull、first等。</li>
+</ol>
+<p>分离flow的消费和触发，同onEach来实现。</p>
+<pre><code class="language-java">fun createFlow() = flow&lt;Int&gt; {
+    (1..3).forEach {
+      emit(it)
+      delay(100)
+    }
+  }.onEach { println(it) }
+
+fun main(){
+  GlobalScope.launch {
+    createFlow().collect()
+  }
+}
+
+</code></pre>
+<p>因此还可以使用下面的写法</p>
+<pre><code class="language-java">fun main(){
+  createFlow().launchIn(GlobalScope)
+}
+</code></pre>
+<p>flow的取消可以直接取消它所在的协程</p>
+<p>Flow的背压<br>
+在响应式编程中，就存在背压的问题，所谓的背压就是生产者的生产速率高于消费者的处理速率的情况下出现。</p>
+<h2 id="2协程的源码分析">2.协程的源码分析</h2>
+<p>协程的类结构可以分为三个部分：CoroutineScope、CoroutineContext、Continuation<br>
+<img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/0b1b2e82148c4eab9eeac9082cee3afa~tplv-k3u1fbpfcp-zoom-1.image" alt="0b1b2e82148c4eab9eeac9082cee3afa~tplv-k3u1fbpfcp-zoom-1.image" loading="lazy"></p>
+<p>当协程中遇到耗时的suspend操作可以挂起，等到任务结束的时候，协程会自动切回来。这个的切换过程就是Continuation在起作用，它可以理解为程序体，可以理解为当每次程序挂起的时候，就将剩余的代码包括起来，等到结束后执行剩余的代码。一个协程的代码块可能会被切割程若干个Continuation，在每个需要挂起的地方都会分配一个Continuation。<br>
+<img src="https://p1-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/4e020b43bf9a4470be7979186a4b8f84~tplv-k3u1fbpfcp-zoom-1.image" alt="4e020b43bf9a4470be7979186a4b8f84~tplv-k3u1fbpfcp-zoom-1.image" loading="lazy"></p>
+<pre><code class="language-java">
+/**
+ * Interface representing a continuation after a suspension point that returns a value of type `T`.
+ */
+@SinceKotlin(&quot;1.3&quot;)
+public interface Continuation&lt;in T&gt; {
+    /**
+     * The context of the coroutine that corresponds to this continuation.
+     */
+    public val context: CoroutineContext
+
+    /**
+     * Resumes the execution of the corresponding coroutine passing a successful or failed [result] as the
+     * return value of the last suspension point.
+     */
+    public fun resumeWith(result: Result&lt;T&gt;)
+}
+
+
+</code></pre>
+<pre><code class="language-java">
+internal abstract class BaseContinuationImpl(
+    // 完成后调用的 Continuation
+    public val completion: Continuation&lt;Any?&gt;?
+) : Continuation&lt;Any?&gt;, CoroutineStackFrame, Serializable {
+    
+    public final override fun resumeWith(result: Result&lt;Any?&gt;) {
+        // This loop unrolls recursion in current.resumeWith(param) to make saner and shorter stack traces on resume
+        var current = this
+        var param = result
+        while (true) {
+            probeCoroutineResumed(current)
+            with(current) {
+                val completion = completion!! // fail fast when trying to resume continuation without completion
+                val outcome: Result&lt;Any?&gt; =
+                    try {
+                        // 1. 执行 suspend 中的代码块
+                        val outcome = invokeSuspend(param)
+                        // 2. 如果代码挂起就提前返回
+                        if (outcome === COROUTINE_SUSPENDED) return
+                        // 3. 返回结果
+                        Result.success(outcome)
+                    } catch (exception: Throwable) {
+                        // 3. 返回失败结果
+                        Result.failure(exception)
+                    }
+                releaseIntercepted() // this state machine instance is terminating
+                if (completion is BaseContinuationImpl) {
+                    // 4. 如果 completion 中还有子 completion，递归
+                    current = completion
+                    param = outcome
+                } else {
+                    // 5. 结果通知
+                    completion.resumeWith(outcome)
+                    return
+                }
+            }
+        }
+    }
+}
+
+
+</code></pre>
+<figure data-type="image" tabindex="2"><img src="https://p9-juejin.byteimg.com/tos-cn-i-k3u1fbpfcp/0e113af10950448d9cfc339361a6763e~tplv-k3u1fbpfcp-zoom-1.image" alt="0e113af10950448d9cfc339361a6763e~tplv-k3u1fbpfcp-zoom-1.image" loading="lazy"></figure>
+<h4 id="过程源码分析">过程源码分析</h4>
+<pre><code class="language-java">
+lifecycleScope.launch(Dispatchers.Main) {
+    val a = async { getResult(1, 2) }
+    val b = async { getResult(3, 5) }
+
+    val c = a.await() + b.await()
+    Log.e(TAG, &quot;result:$c&quot;)
+} 
+
+suspend fun getResult(a: Int, b: Int): Int {
+    return withContext(Dispatchers.IO) {
+        delay(1000)
+        return@withContext a + b
+    }
+}
+</code></pre>
+<h5 id="第一步获取coroutinescope">第一步获取CoroutineScope</h5>
+<p>上面使用的是lifecycle的协程扩展库，如果不使用的情况下就要使用MainScope，他们的CoroutineContext是一个样的</p>
+<pre><code class="language-java">public fun MainScope(): CoroutineScope = ContextScope(SupervisorJob() + Dispatchers.Main)
+
+// LifecycleCoroutineScope
+val Lifecycle.coroutineScope: LifecycleCoroutineScope
+    get() {
+        while (true) {
+            // ...
+            val newScope = LifecycleCoroutineScopeImpl(
+                this,
+                SupervisorJob() + Dispatchers.Main.immediate
+            )
+            // ...
+            return newScope
+        }
+    }
+
+</code></pre>
+<p>SupervisorJob 和Dispatchers.Main 很重要，它们分别代表了CoroutineContext 之前提及的 Job 和 ContinuationInterceptor</p>
+<h6 id="第二步启动协程">第二步启动协程</h6>
+<pre><code class="language-java">public fun CoroutineScope.launch(
+    context: CoroutineContext = EmptyCoroutineContext,
+    start: CoroutineStart = CoroutineStart.DEFAULT,
+    block: suspend CoroutineScope.() -&gt; Unit
+): Job {
+    val newContext = newCoroutineContext(context)
+    val coroutine = if (start.isLazy)
+        LazyStandaloneCoroutine(newContext, block) else
+        StandaloneCoroutine(newContext, active = true)
+    coroutine.start(start, coroutine, block)
+    return coroutine
+}
+</code></pre>
+<p>第三个参数block是个一个lambda参数，同时表明了它需要被suspend修饰。在launch中做了两件事，组合新的CoroutineContext，再创建一个新的Continuation。</p>
+<p>在启动模式为defleat的情况下<br>
+AbstractCoroutine#start -&gt; 最终到</p>
+<p><a href="https://juejin.im/post/6854573211418361864">即学即用Kotlin - 协程</a><br>
+<a href="https://juejin.im/post/6862548590092140558">抽丝剥茧Kotlin - 协程</a></p>
+<hr>
+<h2 id="补充channel">补充channel</h2>
+<p>Channel实际就是一个队列，而且是并发安全的，它可以用来连接协程，进行不同协程间的通信。</p>
+<h2 id="select">Select</h2>
+<h3 id="1复用多个await">1.复用多个await</h3>
+<p>一个场景：获取数据，这个数据的来源于网络以及本地缓存，哪个先获取到就先用哪个，如果是使用的是本地数据的话，那么在网络数据获取成功后更新最新的数据：</p>
+<pre><code class="language-java">fun CoroutineScope.getUserFromApi(login: String) = async(Dispatchers.IO){
+    gitHubServiceApi.getUserSuspend(login)
+}
+
+fun CoroutineScope.getUserFromLocal(login:String) = async(Dispatchers.IO){
+    File(localDir, login).takeIf { it.exists() }?.readText()?.let { gson.fromJson(it, User::class.java) }
+}
+</code></pre>
+<p>首先使用select来解决数据选择的问题：</p>
+<pre><code class="language-java">GlobalScope.launch {
+    val localDeferred = getUserFromLocal(login)
+    val remoteDeferred = getUserFromApi(login)
+
+    val userResponse = select&lt;Response&lt;User?&gt;&gt; {
+        localDeferred.onAwait { Response(it, true) }
+        remoteDeferred.onAwait { Response(it, false) }
+    }
+    ...
+}.join()
+</code></pre>
+<p>注意在select中挂起函数的调用为onAwait，而不是await，这样就实现了在不论哪个先回调，select都会立即返回对应的结果。<br>
+接下来处理先使用的是本地缓存的问题：</p>
+<pre><code class="language-java">GlobalScope.launch {
+    ...
+    userResponse.value?.let { log(it) }
+    userResponse.isLocal.takeIf { it }?.let {
+        val userFromApi = remoteDeferred.await()
+        cacheUser(login, userFromApi)
+        log(userFromApi)
+    }
+}.join()
+
+</code></pre>
+<hr>
+<p>在看PokemonGo的项目里一些对协程flow的补充<br>
+这里提供了一个flow的使用场景，那就是根据用户的输入来进行搜索操作<br>
+提供了两种方式第一个通过channel</p>
+<pre><code class="language-java">    private val mChanncel = ConflatedBroadcastChannel&lt;String&gt;()
+    
+    // 使用 ConflatedBroadcastChannel 进行搜索
+    val searchResultForDb = mChanncel.asFlow()
+        .filter {
+            Timber.e(&quot;local current input:$it&quot;)
+            return@filter it.isNotEmpty()
+        }
+        // 避免在单位时间内，快输入造成大量的请求
+        .debounce(200)
+        //  避免重复的搜索请求。假设正在搜索 dhl，用户删除了 l  然后输入 l。最后的结果还是 dhl。它就不会再执行搜索查询 dhl
+        // distinctUntilChanged 对于 StateFlow 任何实例是没有效果的
+        .distinctUntilChanged()
+        .flatMapLatest { search -&gt; // 只显示最后一次搜索的结果，忽略之前的请求
+            Timber.e(&quot;local current input:$search&quot;)
+            pokemonRepository.fetchPokemonByParameter(search).cachedIn(viewModelScope)
+        }
+        .catch { throwable -&gt;
+            //  异常捕获
+        }.asLiveData()
+        
+            // 根据关键词搜索
+    fun queryParameterForDb(parameter: String) = mChanncel.offer(parameter)
+    
+</code></pre>
+<p>上面的代码就是先声明了一个channel对象，channel通过offer来输入数据，然后在channel的asFlow进行一系列的数据操作，最后给出结果。</p>
+<p>另外一种方式是通过MutableStateFlow进行搜索操作</p>
+<pre><code class="language-java">
+    // 使用 StateFlow 替换 ConflatedBroadcastChannel
+    private val _stateFlow = MutableStateFlow&lt;String&gt;(&quot;&quot;) // 在 MainViewModel 内部使用
+    val stateFlow = _stateFlow // 在外部使用
+    
+      /**
+     * 使用 MutableStateFlow 进行网络搜索
+     *
+     * 因为没有合适的搜索接口，在这里模拟进行网络搜索
+     */
+    val searchResultMockNetWork =
+        // 避免在单位时间内，快输入造成大量的请求
+        stateFlow.debounce(200)
+            .filter { result -&gt;
+                Timber.e(&quot;net current input:$result&quot;)
+                if (result.isEmpty()) { // 过滤掉空字符串等等无效输入
+                    return@filter false
+                } else {
+                    return@filter true
+                }
+            }
+            .distinctUntilChanged()
+            .flatMapLatest { // 只显示最后一次搜索的结果，忽略之前的请求
+                // 网络请求，这里替换自己的实现即可
+                Timber.e(&quot;net current str:$it&quot;)
+                pokemonRepository.fetchPokemonList().cachedIn(viewModelScope)
+            }
+            .catch { throwable -&gt;
+                //  异常捕获
+            }
+            .asLiveData()
+            
+                // 根据关键词搜索
+    fun queryParameterForNetWork(parameter: String) {
+        _stateFlow.value = parameter
+    }
+
+</code></pre>
+<p>这里就是通过MutableStateFlow来触发搜查操作，基本上两者非常像。</p>
+<p>文章记录和整理于以下文章：<br>
+<a href="https://juejin.cn/user/2365804754513085/posts">Kotlin中文社区 的个人主页 - 文章 - 掘金</a><br>
+<a href="https://juejin.im/post/6844903855667298312">在 Android 上使用协程（一）：Getting The Background</a><br>
+<a href="https://juejin.im/post/6844903857072373773">在 Android 上使用协程（二）：Getting started</a><br>
+<a href="https://juejin.im/post/6844903860633337864">在 Android 上使用协程（三） ：Real Work</a></p>
+<p><a href="https://juejin.im/post/6854573211418361864">即学即用Kotlin - 协程</a><br>
+<a href="https://juejin.im/post/6862548590092140558">抽丝剥茧Kotlin - 协程</a></p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#1%E5%8D%8F%E7%A8%8B%E7%9A%84%E4%BD%BF%E7%94%A8">1.协程的使用</a><br>
+*
+<ul>
+<li><a href="#11%E5%8D%8F%E7%A8%8B%E4%BD%9C%E7%94%A8%E5%9F%9F">1.1协程作用域</a></li>
+<li><a href="#12%E8%B0%83%E5%BA%A6%E5%99%A8">1.2调度器</a></li>
+<li><a href="#13suspend">1.3suspend</a></li>
+<li><a href="#14%E5%BC%80%E5%90%AF%E4%B8%80%E4%B8%AA%E5%8D%8F%E7%A8%8B">1.4开启一个协程</a></li>
+<li><a href="#%E5%8D%8F%E7%A8%8B%E7%9A%84%E5%90%AF%E5%8A%A8%E6%A8%A1%E5%BC%8F">协程的启动模式</a></li>
+<li><a href="#15%E7%BB%93%E6%9E%84%E5%B9%B6%E5%8F%91">1.5结构并发</a></li>
+<li><a href="#16%E4%B8%80%E6%AC%A1%E6%80%A7%E8%AF%B7%E6%B1%82%E6%A8%A1%E5%BC%8F">1.6一次性请求模式</a>
+<ul>
+<li><a href="#17%E5%8D%8F%E7%A8%8B%E7%9A%84%E5%B9%B6%E5%8F%91">1.7协程的并发</a></li>
+</ul>
+</li>
+<li><a href="#2%E5%9C%A8%E5%8D%8F%E7%A8%8B%E4%B8%AD%E4%BD%BF%E7%94%A8%E6%B5%81">2在协程中使用流</a>
+<ul>
+<li><a href="#1koltin%E4%B8%AD%E7%9A%84%E7%9B%B8%E5%BA%94%E7%BC%96%E7%A8%8Bflow%E5%92%8Crxjava%E7%9A%84%E5%AF%B9%E6%AF%94">1.Koltin中的相应编程Flow和RxJava的对比</a></li>
+<li><a href="#2flow%E7%9A%84%E7%89%B9%E7%82%B9">2.Flow的特点</a></li>
+</ul>
+</li>
+<li><a href="#%E8%A1%A5%E5%85%85">补充=》</a>
+<ul>
+<li><a href="#%E6%9C%AB%E7%AB%AF%E6%93%8D%E4%BD%9C%E7%AC%A6%E5%8F%B7">末端操作符号</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#2%E5%8D%8F%E7%A8%8B%E7%9A%84%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90">2.协程的源码分析</a><br>
+*
+<ul>
+<li><a href="#%E8%BF%87%E7%A8%8B%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90">过程源码分析</a>
+<ul>
+<li><a href="#%E7%AC%AC%E4%B8%80%E6%AD%A5%E8%8E%B7%E5%8F%96coroutinescope">第一步获取CoroutineScope</a>
+<ul>
+<li><a href="#%E7%AC%AC%E4%BA%8C%E6%AD%A5%E5%90%AF%E5%8A%A8%E5%8D%8F%E7%A8%8B">第二步启动协程</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E8%A1%A5%E5%85%85channel">补充channel</a></li>
+<li><a href="#select">Select</a>
+<ul>
+<li><a href="#1%E5%A4%8D%E7%94%A8%E5%A4%9A%E4%B8%AAawait">1.复用多个await</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

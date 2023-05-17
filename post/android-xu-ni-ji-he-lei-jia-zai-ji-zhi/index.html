@@ -1,0 +1,259 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Android虚拟机和类加载机制 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1684231823842">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Android虚拟机和类加载机制 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="JVM和Dalvik
+Dalvik是基于寄存器的，寄存器是cpu的组成部分，是有限存贮容量的高速存贮部件，它们可用来暂存指令、数据和位址。
+Android源码下载地址：https://source.android.google.cn
+基于寄..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1684231823842" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Android虚拟机和类加载机制
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-08-10
+              </span>
+              <span>
+                5 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1640532050708-53b0fcfd52a7?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=870&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h3 id="jvm和dalvik">JVM和Dalvik</h3>
+<p>Dalvik是基于寄存器的，寄存器是cpu的组成部分，是有限存贮容量的高速存贮部件，它们可用来暂存指令、数据和位址。<br>
+Android源码下载地址：https://source.android.google.cn<br>
+基于寄存器的虚拟机和基于栈的虚拟机的区别？<br>
+基于栈的虚拟机，是每个线程都有单独的栈，方法的执行都是基于操作数栈来实现的，每执行一个方法都会在操作数栈中压入一个新的栈帧，在栈顶的栈帧叫做当前栈帧，一个栈帧包含的（局部变量表、操作数栈、动态连接、返回地址）<br>
+基于寄存器的虚拟机中是没有操作数栈的，但是有很多虚拟寄存器，这些寄存器在运行时栈中，本质上就是一个数组，在Dalvik VM中每个线程都有自己的PC（程序计数器）和调用栈，方法调用的活动记录以帧为单位保存在调用栈上。</p>
+<p>Android虚拟机的变化过程<br>
+在Android5.0以前使用DalvikVM，也就是解释执行，不过在Android2.2版本开始支持JIT即时编译，也就是在程序运行的过程中进行选择热点代码（经常执行的代码）进行编译或者优化<br>
+在Android5.0以后使用ART（Android Runtime）虚拟机执行的是本地机器码，也就是编译过之后的代码，这是在程序安装的时候进行的，所以这个时候应用的安装变慢了（需要进行编译），ART引入预先编译机制（Ahead Of Time）在安装时，ART使用设备自带的dex2oat工具来编译应用，dex中的字节码将被编译成本地机器码。<br>
+从AndroidN混合使用AOT编辑、解释和JIT，在安装应用时不进行任何AOT编译了，运行过程中解释执行，对经常执行的方法进行JIT，经过JIT编译的方法将会记录到Profile配置文件中。当设备闲置和充电时，编译守护进程会运行，根据Profile文件对常用代码进行AOT编译。</p>
+<h3 id="双亲委托机制">双亲委托机制</h3>
+<p><img src="file:///Users/heyueyang/Desktop/20200619165256983.png" alt="" loading="lazy"><br>
+ClassLoader 中的parent 是对象的父类 父类加载器</p>
+<p>ClassLoader的实现类中有一个BootClassLoader，这个是Framework层的类加载器，例如String，Activity等，但是像是所有第三方的dex的类加载器都是通过其他的加载器例如PathClassLoader来实现的，这个PathClassLoader是系统帮助我们创建的，它的构造方法会要求传入一个ClassLoader，然后赋值给parent这个值</p>
+<pre><code class="language-java">protected Class&lt;?&gt; loadClass(String name, boolean resolve)
+        throws ClassNotFoundException
+    {
+            //查找缓存是否已经被加载过了
+            Class&lt;?&gt; c = findLoadedClass(name);
+            if (c == null) {
+                try {
+                    if (parent != null) {
+                    //这里的parent就是BootClassLoader，它是对象的父类，不是类的父类
+                    //那这样的话就是framework先加载，如果没有再通过PathClassLoader去加载
+                        c = parent.loadClass(name, false);
+                    } else {
+                        c = findBootstrapClassOrNull(name);
+                    }
+                } catch (ClassNotFoundException e) {
+                    // ClassNotFoundException thrown if class not found
+                    // from the non-null parent class loader
+                }
+
+                if (c == null) {
+                    // If still not found, then invoke findClass in order
+                    // to find the class.
+                    c = findClass(name);
+                }
+            }
+            return c;
+    }
+</code></pre>
+<hr>
+<p>基于Android28的源码<br>
+补充一个PathClassLoader是在什么地方初始化的问题<br>
+程序都需要有一个main方法作为主入口的，Android的应用程序是在ActivityThread的main方法，可以看到最终在main方法里也是创建出了handle，不过暂时这块的代码没有找到调用的地方，在bandleBindApplication（）方法中构建处理上下文对象，其中ContextImpl中有方法getClassLoader()来获取ClassLoader，<br>
+ContextImp是在上一步ActivityThread中通过ContextImpl.createAppContext(this,data.info)创建的，this是指的主线程，data.info就是我们的PackInfo，然后通过构造方法创建出ContextImpl对象，那么获取ClassLoader就会走到PackInfo(LoadedApk)对象中的getClassLoader（）方法中，<br>
+上面的代码再分析，先直接看这段，</p>
+<pre><code class="language-java">  if (mClassLoader == null) {
+            // Temporarily disable logging of disk reads on the Looper thread
+            // as this is early and necessary.
+            StrictMode.ThreadPolicy oldPolicy = StrictMode.allowThreadDiskReads();
+
+            mClassLoader = ApplicationLoaders.getDefault().getClassLoader(zip,
+                    mApplicationInfo.targetSdkVersion, isBundledApp, librarySearchPath,
+                    libraryPermittedPath, mBaseClassLoader,
+                    mApplicationInfo.classLoaderName);
+            mAppComponentFactory = createAppFactory(mApplicationInfo, mClassLoader);
+
+            StrictMode.setThreadPolicy(oldPolicy);
+            // Setup the class loader paths for profiling.
+            needToSetupJitProfiles = true;
+        }
+
+</code></pre>
+<p>这个时候就会走到ApplicationLoaders中的getClassLoader()方法中，这里有一个ClassLoaderFactory.createClassLoader(),这里通过工厂模式来创建我们的ClassLoader，</p>
+<pre><code class="language-java">  public static ClassLoader createClassLoader(String dexPath,
+            String librarySearchPath, ClassLoader parent, String classloaderName) {
+        if (isPathClassLoaderName(classloaderName)) {
+            return new PathClassLoader(dexPath, librarySearchPath, parent);
+        } else if (isDelegateLastClassLoaderName(classloaderName)) {
+            return new DelegateLastClassLoader(dexPath, librarySearchPath, parent);
+        }
+
+        throw new AssertionError(&quot;Invalid classLoaderName: &quot; + classloaderName);
+    }
+</code></pre>
+<p>会返回两种类型的ClassLoader，在isPathClassLoaderName的判断中，如果传入的名称为null就会返回PathClassLoader，到这PathClassLoader初始化完成了，并关联到了上下文上。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li>
+<ul>
+<li><a href="#jvm%E5%92%8Cdalvik">JVM和Dalvik</a></li>
+<li><a href="#%E5%8F%8C%E4%BA%B2%E5%A7%94%E6%89%98%E6%9C%BA%E5%88%B6">双亲委托机制</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/android-ying-yong-leng-qi-dong-liu-cheng-yi-ji-viewpostwei-shi-me-neng-huo-qu-dao-view-de-kuan-gao/">
+              <h3 class="post-title">
+                Android应用冷启动流程，以及view.post（）为什么能获取到view的宽高
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

@@ -1,0 +1,311 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ViewPage2嵌套ViewPage2的滑动冲突解决 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1684231823842">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="ViewPage2嵌套ViewPage2的滑动冲突解决 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="Google官方的一个视图Demo
+在做测试的时候写了个ViewPage2嵌套ViewPage2的页面，突然发现，内部的ViewPage2响应不到滑动事件，只有外部的ViewPage2能够响应。
+第一反应事件冲突了，好说，继承ViewPag..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1684231823842" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              ViewPage2嵌套ViewPage2的滑动冲突解决
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-11-26
+              </span>
+              <span>
+                5 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1637867165029-a5cad034d4f0?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=687&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="google官方的一个视图demo"><a href="https://github.com/android/views-widgets-samples/tree/master">Google官方的一个视图Demo</a></h2>
+<p>在做测试的时候写了个ViewPage2嵌套ViewPage2的页面，突然发现，内部的ViewPage2响应不到滑动事件，只有外部的ViewPage2能够响应。<br>
+第一反应事件冲突了，好说，继承ViewPage2处理下事件分发就好了，一写？啥？final的类不让继承，好吧再看看其他的解决方案：<br>
+<img src="https://arms-merchants.github.io//post-images/1637905575419.webp" alt="" loading="lazy"><br>
+好吧，也就是ViewPage2是不支持有同向滑动子布局的，如果想要支持滑动需要在onInterceptTouchEvent中处理，并且官方给出了一个解决方案的<a href="https://github.com/android/views-widgets-samples/blob/master/ViewPager2/app/src/main/java/androidx/viewpager2/integration/testapp/NestedScrollableHost.kt#L71">demo</a>，就是在内层的ViewPage2上嵌套一层布局，这个布局自己实现，那么就可以在这个布局中实现onInterceptTouchEvent来处理</p>
+<pre><code class="language-java">import android.widget.FrameLayout
+import android.content.Context
+import android.util.AttributeSet
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
+import androidx.viewpager2.widget.ViewPager2
+import androidx.viewpager2.widget.ViewPager2.ORIENTATION_HORIZONTAL
+import androidx.viewpager2.widget.ViewPager2.ORIENTATION_VERTICAL
+import kotlin.math.absoluteValue
+import kotlin.math.sign
+
+class NestedScrollableHost : FrameLayout {
+    constructor(context: Context) : super(context)
+    constructor(context: Context, attrs: AttributeSet?) : super(context, attrs)
+
+    private var touchSlop = 0
+    private var initialX = 0f
+    private var initialY = 0f
+
+    //这里是获取父的ViewPage2一层一层的往上找
+    private val parentViewPager: ViewPager2?
+        get() {
+            var v: View? = parent as? View
+            while (v != null &amp;&amp; v !is ViewPager2) {
+                v = v.parent as? View
+            }
+            return v as? ViewPager2
+        }
+
+    /**
+     * 在childCount大于0的情况下获取第一位的View
+     */
+    private val child: View? get() = if (childCount &gt; 0) getChildAt(0) else null
+
+    init {
+        //获取一个阀值，在大于这个阀值的情况下才会触发
+        touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    }
+
+    /**
+     * canScrollVertically(1)    true能够向上滑动 false 不能向上滑动
+     * canScrollVertically(-1)   true能够向下滑动 false 不能向下滑动
+     * canScrollHorizontally(1)  true能够向左滑动 false 不能向左滑动
+     * canScrollHorizontally(-1) true能够向右滑动 false 不能向左滑动
+     */
+    private fun canChildScroll(orientation: Int, delta: Float): Boolean {
+        /**
+         * sign的解释 返回参数的符号函数； 如果参数为零，则为零，如果参数大于零，则为 1.0f，如果参数小于零，则为 -1.0f。
+         */
+        val direction = -delta.sign.toInt()
+        //判断在同向时，子view能否继续滑动
+        return when (orientation) {
+            ORIENTATION_HORIZONTAL -&gt; child?.canScrollHorizontally(direction) ?: false
+            ORIENTATION_VERTICAL -&gt; child?.canScrollVertically(direction) ?: false
+            else -&gt; throw IllegalArgumentException()
+        }
+    }
+
+    override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
+        handleInterceptTouchEvent(e)
+        return super.onInterceptTouchEvent(e)
+    }
+
+    private fun handleInterceptTouchEvent(e: MotionEvent) {
+        //获取父ViewPage2的方向，获取不到那说明没有嵌套ViewPage2直接返回
+        val orientation = parentViewPager?.orientation ?: return
+
+        // Early return if child can't scroll in same direction as parent
+        //如果子view在相同的方向上已经不能滚动了，那么也不需要处理了
+        //1和-1分别测试同轴的两个方向，上和下，左和右对应
+        if (!canChildScroll(orientation, -1f) &amp;&amp; !canChildScroll(orientation, 1f)) {
+            return
+        }
+
+        if (e.action == MotionEvent.ACTION_DOWN) {
+            initialX = e.x
+            initialY = e.y
+            //ACTION_DOWN时先把事件拦截掉
+            parent.requestDisallowInterceptTouchEvent(true)
+        } else if (e.action == MotionEvent.ACTION_MOVE) {
+            val dx = e.x - initialX
+            val dy = e.y - initialY
+            //ViewPage2是否是横向滑动的
+            val isVpHorizontal = orientation == ORIENTATION_HORIZONTAL
+
+            // assuming ViewPager2 touch-slop is 2x touch-slop of child
+            //假设父ViewPage2的滑动阀值是childView的阀值的2倍
+            //如果是横向的画x的值取一半
+            val scaledDx = dx.absoluteValue * if (isVpHorizontal) .5f else 1f
+            //在竖向的话Y的值取一半
+            val scaledDy = dy.absoluteValue * if (isVpHorizontal) 1f else .5f
+            //只有这个值大于阀值的的时候才触发
+            if (scaledDx &gt; touchSlop || scaledDy &gt; touchSlop) {
+                if (isVpHorizontal == (scaledDy &gt; scaledDx)) {
+                    /**
+                     *       也就是横向滑动的话，但是y轴的滑动距离大于x轴，那么也是让父布局拦截
+                     *       如果是竖直方向滑动的话，但是x轴滑动的距离大于y轴的，父布局拦截
+                     *       也就是只要isVpHorizontal的值等于scaledDy &gt; scaledDx那么就让父布局处理，说明不是需要处理的
+                     *       滑动方向
+                     */
+                    // Gesture is perpendicular, allow all parents to intercept
+                    parent.requestDisallowInterceptTouchEvent(false)
+                } else {
+                    //如果子View能滑动，父布局不处理滑动事件并进行继续的分发，分发的话事件就传递下来了
+                    // Gesture is parallel, query child if movement in that direction is possible
+                    if (canChildScroll(orientation, if (isVpHorizontal) dx else dy)) {
+                        // Child can scroll, disallow all parents to intercept
+                        parent.requestDisallowInterceptTouchEvent(true)
+                    } else {
+                        //不能滑动，那么拦截
+                        // Child cannot scroll, allow all parents to intercept
+                        parent.requestDisallowInterceptTouchEvent(false)
+                    }
+                }
+            }
+        }
+    }
+}
+</code></pre>
+<p>使用的话直接在内层的滑动布局外加一层NestedScrollableHost。</p>
+<h1 id="总结">总结</h1>
+<h2 id="相当于就是你不让我覆写那我写个中间层把你的事件拦截掉往下分发">相当于就是你不让我覆写，那我写个中间层把你的事件拦截掉往下分发。</h2>
+<hr>
+<h1 id="完整项目地址"><a href="https://github.com/Arms-merchants/Study/tree/main/UI/FlowView/app/src/main/java/com/arms/flowview/vp">完整项目地址</a></h1>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#google%E5%AE%98%E6%96%B9%E7%9A%84%E4%B8%80%E4%B8%AA%E8%A7%86%E5%9B%BEdemo">Google官方的一个视图Demo</a></li>
+</ul>
+</li>
+<li><a href="#%E6%80%BB%E7%BB%93">总结</a>
+<ul>
+<li><a href="#%E7%9B%B8%E5%BD%93%E4%BA%8E%E5%B0%B1%E6%98%AF%E4%BD%A0%E4%B8%8D%E8%AE%A9%E6%88%91%E8%A6%86%E5%86%99%E9%82%A3%E6%88%91%E5%86%99%E4%B8%AA%E4%B8%AD%E9%97%B4%E5%B1%82%E6%8A%8A%E4%BD%A0%E7%9A%84%E4%BA%8B%E4%BB%B6%E6%8B%A6%E6%88%AA%E6%8E%89%E5%BE%80%E4%B8%8B%E5%88%86%E5%8F%91">相当于就是你不让我覆写，那我写个中间层把你的事件拦截掉往下分发。</a></li>
+</ul>
+</li>
+<li><a href="#%E5%AE%8C%E6%95%B4%E9%A1%B9%E7%9B%AE%E5%9C%B0%E5%9D%80">完整项目地址</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/viewpager-de-yuan-ma-fen-xi-todo/">
+              <h3 class="post-title">
+                ViewPager的源码分析--TODO
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

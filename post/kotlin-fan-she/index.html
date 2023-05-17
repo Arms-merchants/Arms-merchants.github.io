@@ -1,0 +1,373 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kotlin反射 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1684231823842">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Kotlin反射 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="kotlin可以直接使用java的反射，如果要使用kotlin的反射，那么需要单独引入kotlin的反射库
+implementation &quot;org.jetbrains.kotlin:kotlin-reflect&quot;  
+
+..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1684231823842" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Kotlin反射
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-03-15
+              </span>
+              <span>
+                7 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1647264002303-9c40ca31b62e?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=1770&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>kotlin可以直接使用java的反射，如果要使用kotlin的反射，那么需要单独引入kotlin的反射库</p>
+<pre><code class="language-java">implementation &quot;org.jetbrains.kotlin:kotlin-reflect&quot;  
+</code></pre>
+<p>那么这和Java对比的话有什么区别</p>
+<h2 id="java">Java</h2>
+<ul>
+<li>
+<p>优点：无需引入额外依赖，首次使用速度相对较快(这是因为它的信息都在虚拟机内)。</p>
+</li>
+<li>
+<p>缺点：无法访问Kotlin语法特性，需要对Kotlin生成的字节码足够了解(这是因为Kotlin程序编译完之后也是个Java类，所以在Java反射视角下看到的Kotlin编译的状态和一般Java类无异，这个时候如果要通过反射访问Kotlin类的一些方法属性，必须要知道它编译什么样的字节码)</p>
+</li>
+</ul>
+<h2 id="kotlin">kotlin</h2>
+<ul>
+<li>
+<p>优点：支持访问Kotlin几乎所有特性，API设计兼容性更好。</p>
+</li>
+<li>
+<p>缺点：额外引入了一个Kotlin反射库(这个库2.5M左右，编译后400KB)，首次调用会慢一些，这是因为Kotlin的反射信息是写到Metadata这个注解里面的(通过查看字节码可以看到，如下)，里面的数据通过Protobuf的数据格式序列化二进制写入，所以首次反射调用有一个获取注解并反序列化的过程)。</p>
+</li>
+</ul>
+<pre><code class="language-kotlin">
+@Metadata(
+   mv = {1, 6, 0},
+   k = 1,
+   d1 = {&quot;\u0000\u001a\n\u0002\u0018\u0002\n\u0000\n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0002\b\u0002\n\u0002\u0010\u0002\n\u0002\b\u0003\u0018\u0000*\n\b\u0000\u0010\u0001 \u0000*\u00020\u00022\u00020\u0003B\u0005¢\u0006\u0002\u0010\u0004J\u0013\u0010\u0005\u001a\u00020\u00062\u0006\u0010\u0007\u001a\u00028\u0000¢\u0006\u0002\u0010\b¨\u0006\t&quot;},
+   d2 = {&quot;Lcom/qisan/kotlinstu/Dustbin;&quot;, &quot;T&quot;, &quot;Lcom/qisan/kotlinstu/Waste;&quot;, &quot;&quot;, &quot;()V&quot;, &quot;put&quot;, &quot;&quot;, &quot;t&quot;, &quot;(Lcom/qisan/kotlinstu/Waste;)V&quot;, &quot;KotlinStu.app&quot;}
+)
+</code></pre>
+<h2 id="一些在kotlin反射中的常用api">一些在Kotlin反射中的常用Api:</h2>
+<pre><code class="language-java">        var cls: KClass&lt;String&gt; = String::class
+        //KClass转为java的Class&lt;String&gt;
+        var clsJava: Class&lt;String&gt; = cls.java
+        //java的Class&lt;String&gt;转为KClass
+        cls = clsJava.kotlin
+        //获取定义在String类的属性，返回的是Collections
+        val properties = cls.declaredMemberProperties
+        //返回这个类中的所有方法
+        cls.declaredFunctions
+        //返回这个类中的所有非静态非扩展的函数
+        cls.declaredMemberFunctions
+        //返回这个类中中的扩展函数,注意看下面的类A
+        cls.declaredMemberExtensionFunctions
+
+        cls.isAbstract//是否是抽象类
+        cls.isCompanion//是否是伴生对象
+        cls.nestedClasses//获取当前类的内部类
+        cls.objectInstance//如果是object，可以通过这个方法获取
+</code></pre>
+<h3 id="1declaredmemberextensionfunctions的式例">1.declaredMemberExtensionFunctions的式例</h3>
+<pre><code class="language-java">class A {
+
+    fun test(){
+        //这里的反射属性通过这个是可以获取到这个String.pass的扩展方法
+        A::class.declaredMemberExtensionFunctions
+        //但是通过String是获取不到
+        String::class.declaredMemberExtensionFunctions
+        &quot;&quot;.pass()
+    }
+
+    fun String.pass(){
+    }
+}
+</code></pre>
+<p>在A的扩展函数中能够获取到String.pass的扩展方法，但是String::class.declaredMemberExtensionFunctions是没有的，而在顶级的扩展函数中是构建成静态方法的.</p>
+<pre><code class="language-java">fun String.pass() {
+    println(&quot;test&quot;)
+}
+//ktx.kt 对应到的java代码
+@Metadata(
+   mv = {1, 6, 0},
+   k = 2,
+   d1 = {&quot;\u0000\f\n\u0000\n\u0002\u0010\u0002\n\u0002\u0010\u000e\n\u0000\u001a\n\u0010\u0000\u001a\u00020\u0001*\u00020\u0002¨\u0006\u0003&quot;},
+   d2 = {&quot;pass&quot;, &quot;&quot;, &quot;&quot;, &quot;Arount.app&quot;}
+)
+public final class KtxKt {
+   public static final void pass(@NotNull String $this$pass) {
+      Intrinsics.checkNotNullParameter($this$pass, &quot;$this$pass&quot;);
+      String var1 = &quot;test&quot;;
+      System.out.println(var1);
+   }
+}
+</code></pre>
+<h3 id="2ktype的获取">2.KType的获取</h3>
+<pre><code class="language-java">   fun testKType(){
+        val mapType = typeOf&lt;Map&lt;String,Int&gt;&gt;()
+        mapType.arguments.forEach {
+            print(it)
+        }
+        /**
+         * 输出结果：
+         * kotlin.String
+         * kotlin.Int
+         * KType可以找到泛型实参
+         */
+    }
+</code></pre>
+<h3 id="3获取接口方法的返回的泛型实例参数类型">3.获取接口方法的返回的泛型实例参数类型</h3>
+<pre><code class="language-java">interface Api{
+    fun getUsers():List&lt;UserModel&gt;
+}
+
+data class UserModel(var id:Int,var name:String)
+
+fun testGetFunParamsType(){
+        Api::class.declaredFunctions.first { it.name == &quot;getUsers&quot; }
+            .returnType.arguments.forEach {
+                print(it)
+            }
+        //两者相同
+        Api::getUsers.returnType.arguments.forEach {
+            print(it)
+        }
+    }
+</code></pre>
+<h3 id="4获取实例对象上的泛型约束类型">4.获取实例对象上的泛型约束类型</h3>
+<pre><code class="language-java">abstract class SuperType&lt;T&gt;{
+    val typeParameter by lazy {
+        //this表示的是子类的实例，因为抽象类不能用于创建实例，只能背当做父类被子类继承
+        this::class.supertypes.first().arguments.first().type
+        //如果有多个子类继承 比如class SubType2:SubType(){} 
+        //这个时候this::class.supertype会空，因为SubType没有泛型实参这时候要使用：
+        this::class.allSupertypes.first().arguments.first().type
+    }
+}
+
+open class SubType:SuperType&lt;String&gt;()
+
+class SubType2:SubType()
+
+fun testGetParentType(){
+    val subType = SubType()
+    subType.typeParameter.let {
+        print(it)
+        //kotlin.String
+    }
+}
+</code></pre>
+<h2 id="场景引用-深层拷贝">场景引用-深层拷贝</h2>
+<pre><code class="language-java">    data class Person(val id: Int, val name: String, val group: Group)
+    data class Group(val id: Int, val name: String)
+
+/**
+ * 深层数据拷贝
+ */
+fun &lt;T:Any&gt; T.deepCopy():T{
+    if(!this::class.isData){
+        return this
+    }
+    return this::class.primaryConstructor!!.let { primaryConstructor-&gt;
+        primaryConstructor.parameters.associate { parameter -&gt;
+            val value =
+                (this::class as KClass&lt;T&gt;).memberProperties.first { it.name == parameter.name }
+                    .get(this)
+            if ((parameter.type.classifier as? KClass&lt;*&gt;)?.isData == true) {
+                parameter to value?.deepCopy()
+            } else {
+                parameter to value
+            }
+        }
+            .let {
+                primaryConstructor.callBy(it)
+                //primaryConstructor是KFunction&lt;T&gt;类型 KFunction&lt;T&gt;里面有callBy方法 只要传一个map，返回调用者的参数类型T
+            }
+    }
+}
+
+    private fun testCopy() {
+        val group = Group(1, &quot;11111&quot;)
+        val person = Person(1, &quot;haha&quot;, group)
+        //浅层拷贝实际上就是new了一个新的对象，并将当前类的属性传入，那么group就传入的是同一个了
+        val copyPerson = person.copy()
+        //也就是说通过copy的方法，实现的拷贝中group还是指向的同一个，那么相应的修改就会造成同步的修改
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, (person === copyPerson).toString()) //false
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, (person.group === copyPerson.group).toString()) //true
+
+        //深层拷贝的第一次是真的慢
+        val startTime = System.currentTimeMillis()
+        val deepCope = person.deepCopy()
+        val endTime = System.currentTimeMillis()
+
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, &quot;cost time:${endTime - startTime}&quot;)
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, (person === deepCope).toString()) //false
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, (person.group === deepCope.group).toString()) //false
+    }
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#java">Java</a></li>
+<li><a href="#kotlin">kotlin</a></li>
+<li><a href="#%E4%B8%80%E4%BA%9B%E5%9C%A8kotlin%E5%8F%8D%E5%B0%84%E4%B8%AD%E7%9A%84%E5%B8%B8%E7%94%A8api">一些在Kotlin反射中的常用Api:</a>
+<ul>
+<li><a href="#1declaredmemberextensionfunctions%E7%9A%84%E5%BC%8F%E4%BE%8B">1.declaredMemberExtensionFunctions的式例</a></li>
+<li><a href="#2ktype%E7%9A%84%E8%8E%B7%E5%8F%96">2.KType的获取</a></li>
+<li><a href="#3%E8%8E%B7%E5%8F%96%E6%8E%A5%E5%8F%A3%E6%96%B9%E6%B3%95%E7%9A%84%E8%BF%94%E5%9B%9E%E7%9A%84%E6%B3%9B%E5%9E%8B%E5%AE%9E%E4%BE%8B%E5%8F%82%E6%95%B0%E7%B1%BB%E5%9E%8B">3.获取接口方法的返回的泛型实例参数类型</a></li>
+<li><a href="#4%E8%8E%B7%E5%8F%96%E5%AE%9E%E4%BE%8B%E5%AF%B9%E8%B1%A1%E4%B8%8A%E7%9A%84%E6%B3%9B%E5%9E%8B%E7%BA%A6%E6%9D%9F%E7%B1%BB%E5%9E%8B">4.获取实例对象上的泛型约束类型</a></li>
+</ul>
+</li>
+<li><a href="#%E5%9C%BA%E6%99%AF%E5%BC%95%E7%94%A8-%E6%B7%B1%E5%B1%82%E6%8B%B7%E8%B4%9D">场景引用-深层拷贝</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/anr-yi-ji-dian-liang-you-hua/">
+              <h3 class="post-title">
+                ANR以及电量优化
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

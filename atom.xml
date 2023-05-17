@@ -1,0 +1,3584 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <id>https://arms-merchants.github.io/</id>
+    <title>Arms-merchants</title>
+    <updated>2023-05-17T01:08:48.881Z</updated>
+    <generator>https://github.com/jpmonette/feed</generator>
+    <link rel="alternate" href="https://arms-merchants.github.io/"/>
+    <link rel="self" href="https://arms-merchants.github.io/atom.xml"/>
+    <subtitle>温故而知新</subtitle>
+    <logo>https://arms-merchants.github.io/images/avatar.png</logo>
+    <icon>https://arms-merchants.github.io/favicon.ico</icon>
+    <rights>All rights reserved 2023, Arms-merchants</rights>
+    <entry>
+        <title type="html"><![CDATA[Kotlin关键字by lazy中的Mode分析]]></title>
+        <id>https://arms-merchants.github.io/post/kotlin-guan-jian-zi-by-lazy-zhong-de-mode-fen-xi/</id>
+        <link href="https://arms-merchants.github.io/post/kotlin-guan-jian-zi-by-lazy-zhong-de-mode-fen-xi/">
+        </link>
+        <updated>2023-05-16T08:42:58.000Z</updated>
+        <content type="html"><![CDATA[<pre><code class="language-java">    class TestManager private constructor(){
+        companion object{
+            val instance by lazy(LazyThreadSafetyMode.SYNCHRONIZED){
+                TestManager()
+            }
+        }
+    }
+</code></pre>
+<p>上面代码是常见的Kotlin中通过by关键字来创建单例对象的实现，但lazy中的Mode是什么呢？<br>
+了解这些之前，我们先简单分别说下lazy和by，其中by是Kotlin中用于委托的关键字，而lazy是一个方法，其返回值是委托的具体对象。by lazy用于实现数据的惰性加载，在初始化一个常量时确保其不会被多次初始化。<br>
+LazyThreadSafetyMode的值有三个，通过它来确定对象的创建模式：</p>
+<ul>
+<li>LazyThreadSafetyMode.SYNCHRONIZED</li>
+<li>LazyThreadSafetyMode.PUBLICATION</li>
+<li>LazyThreadSafetyMode.NONE</li>
+</ul>
+<p>lazy方法默认是使用SynchronizedLazyImpl来返回委托的具体对象的。<br>
+Lazy实现了by lazy的方法：</p>
+<pre><code class="language-java">@kotlin.internal.InlineOnly
+public inline operator fun &lt;T&gt; Lazy&lt;T&gt;.getValue(thisRef: Any?, property: KProperty&lt;*&gt;): T = value
+</code></pre>
+<p>也就是我们的获取到的值就是这个value，那么我们就要来看这个value是怎么获取到的。分析三种Mode下value不同取值，可以确定后续我们在使用by lazy时应该使用那种Mode，首先先看SynchronizedLazyImpl的实现：</p>
+<pre><code class="language-java">private class SynchronizedLazyImpl&lt;out T&gt;(initializer: () -&gt; T, lock: Any? = null) : Lazy&lt;T&gt;, Serializable {
+    //lazy后的方法体，返回当前需要创建的对象
+    private var initializer: (() -&gt; T)? = initializer
+    //默认值，定义了一个未初始化的值，为了解决DCL带来指令重排序导致主存和工作内存数据不一致的问题，这里使用Volatile原语注解，线程安全
+    @Volatile private var _value: Any? = UNINITIALIZED_VALUE
+    //锁
+    // final field is required to enable safe publication of constructed instance
+    private val lock = lock ?: this
+
+    override val value: T
+        //获取value的值就是通过get方法
+        get() {
+            val _v1 = _value
+            //如果当前的值已经不是未初始化的了那么直接返回
+            if (_v1 !== UNINITIALIZED_VALUE) {
+                @Suppress(&quot;UNCHECKED_CAST&quot;)
+                return _v1 as T
+            }
+
+            return synchronized(lock) {
+                //双重检测
+                val _v2 = _value
+                if (_v2 !== UNINITIALIZED_VALUE) {
+                    @Suppress(&quot;UNCHECKED_CAST&quot;) (_v2 as T)
+                } else {
+                    //如果没有初始化，那么通过initializer来进行初始化操作
+                    val typedValue = initializer!!()
+                    //并将这个值保存在_value中
+                    _value = typedValue
+                    initializer = null
+                    typedValue
+                }
+            }
+        }
+
+    override fun isInitialized(): Boolean = _value !== UNINITIALIZED_VALUE
+
+    override fun toString(): String = if (isInitialized()) value.toString() else &quot;Lazy value not initialized yet.&quot;
+
+    private fun writeReplace(): Any = InitializedLazyImpl(value)
+}
+</code></pre>
+<p>SafePublicationLazyImpl的实现：</p>
+<pre><code class="language-java">private class SafePublicationLazyImpl&lt;out T&gt;(initializer: () -&gt; T) : Lazy&lt;T&gt;, Serializable {
+    @Volatile private var initializer: (() -&gt; T)? = initializer
+    @Volatile private var _value: Any? = UNINITIALIZED_VALUE
+    // this final field is required to enable safe initialization of the constructed instance
+    private val final: Any = UNINITIALIZED_VALUE
+
+    override val value: T
+        get() {
+            val value = _value
+            if (value !== UNINITIALIZED_VALUE) {
+                @Suppress(&quot;UNCHECKED_CAST&quot;)
+                return value as T
+            }
+            val initializerValue = initializer
+            // if we see null in initializer here, it means that the value is already set by another thread
+            if (initializerValue != null) {
+                   //如果是多线程的话，初始化方法会调用多次
+                val newValue = initializerValue()
+                //通过CAS保证只有在原始值为UNINITIALIZED_VALUE时赋值
+                if (valueUpdater.compareAndSet(this, UNINITIALIZED_VALUE, newValue)) {
+                    initializer = null
+                    return newValue
+                }
+            }
+            @Suppress(&quot;UNCHECKED_CAST&quot;)
+            return _value as T
+        }
+
+    override fun isInitialized(): Boolean = _value !== UNINITIALIZED_VALUE
+
+    override fun toString(): String = if (isInitialized()) value.toString() else &quot;Lazy value not initialized yet.&quot;
+
+    private fun writeReplace(): Any = InitializedLazyImpl(value)
+
+    companion object {
+        private val valueUpdater = 
+        //java中的原子操作
+        java.util.concurrent.atomic.AtomicReferenceFieldUpdater.newUpdater(
+            SafePublicationLazyImpl::class.java,
+            Any::class.java,
+            &quot;_value&quot;
+        )
+    }
+}
+</code></pre>
+<p>UnsafeLazyImpl的实现：</p>
+<pre><code class="language-java">internal class UnsafeLazyImpl&lt;out T&gt;(initializer: () -&gt; T) : Lazy&lt;T&gt;, Serializable {
+    private var initializer: (() -&gt; T)? = initializer
+    private var _value: Any? = UNINITIALIZED_VALUE
+
+    override val value: T
+        get() {
+            //只是是未初始化那么就调用初始化方法
+            //多线程的情况下，那么它的值为最后的赋值方法，线程不安全
+            if (_value === UNINITIALIZED_VALUE) {
+                _value = initializer!!()
+                initializer = null
+            }
+            @Suppress(&quot;UNCHECKED_CAST&quot;)
+            return _value as T
+        }
+
+    override fun isInitialized(): Boolean = _value !== UNINITIALIZED_VALUE
+
+    override fun toString(): String = if (isInitialized()) value.toString() else &quot;Lazy value not initialized yet.&quot;
+
+    private fun writeReplace(): Any = InitializedLazyImpl(value)
+}
+</code></pre>
+<p>经过上面的源码分析，我们不难看出三种Mode的区别：</p>
+<ul>
+<li>LazyThreadSafetyMode.SYNCHRONIZED 通过synchronized关键值创建同步锁来实现线程安全</li>
+<li>LazyThreadSafetyMode.PUBLICATION 通过CAS来保证线程安全，多线程的情况下初始化方法会调用，但只有一个生效。</li>
+<li>LazyThreadSafetyMode.NONE，只要标识为未初始化就调用初始化来赋值，线程不安全。</li>
+</ul>
+<p>所以经过上面的分析，在确定当前属性不会在多个线程之间共享的时候，则可以使用NONE模式，这是最快的模式，但也是最不安全的模式。<br>
+如果属性是要在多个线程间共享，那么使用SYNCHRONIZED和PUBLICATION，但因为SYNCHRONIZED引入了锁的机制，它是最安全的，但也是最慢的模式。折中的话则可以使用PUBLICATION。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[对Closeable的自动关闭处理，语法🍬]]></title>
+        <id>https://arms-merchants.github.io/post/dui-closeable-de-zi-dong-guan-bi-chu-li-yu-fa/</id>
+        <link href="https://arms-merchants.github.io/post/dui-closeable-de-zi-dong-guan-bi-chu-li-yu-fa/">
+        </link>
+        <updated>2022-06-14T01:30:07.000Z</updated>
+        <content type="html"><![CDATA[<p>首先看一段示例代码：</p>
+<pre><code class="language-java"> FileInputStream fis = null;
+        try {
+            fis = new FileInputStream(&quot;&quot;);
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                fis.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+</code></pre>
+<p>一段基本操作，对文件流进行操作那么不论成功还是失败最好都要进行文件流的关闭。不过这样的代码确实挺样板的。我们看下java和kotlin对这中样本代码消除的语法糖实现。</p>
+<h2 id="1java的实现">1.java的实现</h2>
+<pre><code class="language-java">     try (FileInputStream fis = new FileInputStream(&quot;file_path&quot;);
+             FileOutputStream fos = new FileOutputStream(&quot;file_path&quot;)) {
+            byte[] bytes = new byte[1024];
+            while ( fis.read(bytes) != -1) {
+                fos.write(bytes);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+</code></pre>
+<p>跟原来的写法唯一的区别就是将Closeable对象的声明是在try后的括号内,并且可以通过；来进行分割声明多个Closeable对象，在try包裹内的代码执行完后都会被自动close掉。</p>
+<h2 id="2kotlin的实现">2.kotlin的实现</h2>
+<pre><code class="language-java">   val fis = FileInputStream(&quot;file_path&quot;)
+    fis.use { 
+        fis.read()
+    }
+</code></pre>
+<p>通过使用use操作符来实现自动关闭Closeable对象，我们看一下use的源码：</p>
+<pre><code class="language-java">@InlineOnly
+@RequireKotlin(&quot;1.2&quot;, versionKind = RequireKotlinVersionKind.COMPILER_VERSION, message = &quot;Requires newer compiler version to be inlined correctly.&quot;)
+public inline fun &lt;T : Closeable?, R&gt; T.use(block: (T) -&gt; R): R {
+    contract {
+        callsInPlace(block, InvocationKind.EXACTLY_ONCE)
+    }
+    var exception: Throwable? = null
+    try {
+        return block(this)
+    } catch (e: Throwable) {
+        exception = e
+        throw e
+    } finally {
+        when {
+            apiVersionIsAtLeast(1, 1, 0) -&gt; this.closeFinally(exception)
+            this == null -&gt; {}
+            exception == null -&gt; close()
+            else -&gt;
+                try {
+                    close()
+                } catch (closeException: Throwable) {
+                    // cause.addSuppressed(closeException) // ignored here
+                }
+        }
+    }
+}
+</code></pre>
+<p>一个高阶的内联函数，最终都是通过finally中进行关闭操作。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[NDK开发-使用FMOD进行变声]]></title>
+        <id>https://arms-merchants.github.io/post/ndk-kai-fa-shi-yong-fmod-jin-xing-bian-sheng/</id>
+        <link href="https://arms-merchants.github.io/post/ndk-kai-fa-shi-yong-fmod-jin-xing-bian-sheng/">
+        </link>
+        <updated>2022-04-28T03:30:02.000Z</updated>
+        <content type="html"><![CDATA[<p>FMOD一款强大的语音引擎，等同于视频届的FFMPEG.可以进行音频的多种修改和设置，它有提供客户端来进行直接使用，不过今天我们通过集成API来实现几个简单的变音效果。</p>
+<h2 id="1ndk配置">1.NDK配置</h2>
+<p>现在需要注意的是在新版本的AndroidStudio中已经不支持在local.properties设置中设置ndk.dir的配置来设置使用的NDK版本，如果需要配置的话通过下面的方式：</p>
+<pre><code class="language-java">android{
+    ndkVersion &quot;major.minor.build&quot; //ndkVersion &quot;21.3.6528147&quot;
+}
+</code></pre>
+<p>如果不指定的话那么默认采用当前AGP支持的最高版本。<br>
+导入fmod的文件，这里包括两个部分，一个是动态库（so库），一个是头文件<br>
+通过头文件我们就可以使用对应的fmod的方法了。<br>
+将fmod的inc头文件拷贝到cpp目录下，将so库拷贝到jinLibs（默认，也可以是指定的so库目录）<br>
+修改默认的CMakeLists.txt文件：</p>
+<pre><code class="language-java">#批量导入源文件，避免还需要一个个的导入源文件
+file(GLOB allCPP *.c *.h *.cpp)
+
+add_library( # Sets the name of the library.
+        native-lib
+
+        # Sets the library as a shared library.
+         #SHARED 表示这个库是一个动态库 STATIC表示这个库是一个静态库，动态库是以.so文件结尾 静态库是以.a结尾，并且Android的话
+        #在打包的最后只会包含有动态库，因为如果是静态库的话那么会将对应的代码拷贝到对应的地方，也就是在运行的时候不需要静态库了，而动态库对应的都是通过地址
+        #来进行链接的，那么库文件还是需要的
+        SHARED
+
+        # Provides a relative path to your source file(s).
+        //注意这里的名称要和上面批量导入的名称一致
+        ${allCPP}
+        )
+
+#导入库文件，也就是三方的so，不过需要注意这个是需要在jniLibs中有对应文件夹后才能生效，不然会在编译阶段报错
+set(CMAKE_CXX_FLAGS &quot;${CMAKE_CXX_FLAGS} -L${CMAKE_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI}&quot;)
+</code></pre>
+<h2 id="2添加fmod的头文件和库">2.添加FMOD的头文件和库</h2>
+<p>将下载的FMOD中对应的头文件文件夹inc拷贝到cpp目录下，在jniLibs中拷贝需要使用到的的架构目录。<br>
+在CMakeLists.txt中添加配置信息：</p>
+<pre><code class="language-java">#批量导入头文件,注意对应的目录，当前的根目录是CMakeLists.txt所在的目录
+include_directories(&quot;inc&quot;)
+#链接对应的库文件
+target_link_libraries( # Specifies the target library.
+        native-lib
+
+        # Links the target library to the log library
+        # included in the NDK.
+        ${log-lib}
+        fmod
+        fmodL
+        )
+</code></pre>
+<p>完整的CMakeLists.txt文件：</p>
+<pre><code class="language-java"># For more information about using CMake with Android Studio, read the
+# documentation: https://d.android.com/studio/projects/add-native-code.html
+
+# Sets the minimum version of CMake required to build the native library.
+
+cmake_minimum_required(VERSION 3.10.2)
+
+# Declares and names the project.
+
+project(&quot;ndktest&quot;)
+
+# Creates and names a library, sets it as either STATIC
+# or SHARED, and provides the relative paths to its source code.
+# You can define multiple libraries, and CMake builds them for you.
+# Gradle automatically packages shared libraries with your APK.
+
+#批量导入头文件
+include_directories(&quot;inc&quot;)
+#批量导入源文件
+file(GLOB allCPP *.c *.h *.cpp)
+
+add_library( # Sets the name of the library.
+        native-lib
+
+        # Sets the library as a shared library.
+        SHARED
+
+        # Provides a relative path to your source file(s).
+        ${allCPP}
+        )
+#导入库文件，也就是三方的so
+set(CMAKE_CXX_FLAGS &quot;${CMAKE_CXX_FLAGS} -L${CMAKE_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI}&quot;)
+
+# Searches for a specified prebuilt library and stores the path as a
+# variable. Because CMake includes system libraries in the search path by
+# default, you only need to specify the name of the public NDK library
+# you want to add. CMake verifies that the library exists before
+# completing its build.
+
+find_library( # Sets the name of the path variable.
+        log-lib
+
+        # Specifies the name of the NDK library that
+        # you want CMake to locate.
+        log)
+
+# Specifies libraries CMake should link to your target library. You
+# can link multiple libraries, such as libraries you define in this
+# build script, prebuilt third-party libraries, or system libraries.
+
+target_link_libraries( # Specifies the target library.
+        native-lib
+
+        # Links the target library to the log library
+        # included in the NDK.
+        ${log-lib}
+        fmod
+        fmodL
+        )
+</code></pre>
+<h2 id="3准备需要编辑的音频文件">3.准备需要编辑的音频文件</h2>
+<p>这里我直接准备了一个mp3文件来进行编辑，当然也可以进行录制后编辑。在assets目录中放入mp3文件，这里为了方便操作，使用okio将文件拷贝到cache目录操作，这样也不需要进行权限的申请。</p>
+<pre><code class="language-java">    implementation 'com.squareup.okio:okio:2.10.0'
+</code></pre>
+<p>拷贝文件：</p>
+<pre><code class="language-java">    private fun copyFile(): String {
+        //将assets目录下的文件拷贝到应用的cache目录下，这里的source是okio的扩展方法
+        val targetFile = File(this.cacheDir, &quot;test.mp3&quot;)
+        //使用use来自动关闭实现Closeable的对象
+        this.assets.open(&quot;test.mp3&quot;).source().use { source -&gt;
+            targetFile.sink().buffer().use {
+                it.writeAll(source)
+            }
+        }
+        return targetFile.path;
+    }
+</code></pre>
+<h2 id="4使用ndk实现对应的方法调用">4.使用NDK实现对应的方法调用</h2>
+<pre><code class="language-c++">#include &lt;jni.h&gt;
+#include &lt;string&gt;
+
+#include &lt;fmod.hpp&gt;
+
+#include &quot;Student.h&quot;
+
+using namespace std;
+using namespace FMOD;
+
+//android的log打印需要导入的头文件P
+#include &lt;android/log.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;pthread.h&gt;
+//宏定义
+#define LOG_TAG &quot;ARM_NDK&quot;
+//...的参数由__VA_ARGS__来进行确认
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__);
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__);
+
+#undef MODE_NORMAL
+#define MODE_NORMAL 0
+#undef MODE_FUNNY
+#define MODE_FUNNY 1
+#undef MODE_UNCLE
+#define MODE_UNCLE 2
+#undef MODE_LOLITA
+#define MODE_LOLITA 3
+#undef MODE_ROBOT
+#define MODE_ROBOT 4
+#undef MODE_ETHEREAL
+#define MODE_ETHEREAL 5
+#undef MODE_CHORUS
+#define MODE_CHORUS 6
+#undef MODE_HORROR
+#define MODE_HORROR 7
+
+extern &quot;C&quot; {
+//因为cpp是C++，如果要导入c的代码，需要使用c的语言环境
+};
+
+extern &quot;C&quot; JNIEXPORT
+jstring JNICALL
+Java_com_arms_ndktest_MainActivity_stringFromJNI(
+        JNIEnv
+        *env,
+        jobject /* this */) {
+    string hello = &quot;Hello from C++&quot;;
+    LOGE(&quot;测试打印&quot;);
+    auto *student = new Student(&quot;haha&quot;, 21);
+    const char *str = student-&gt;getName().c_str();
+    LOGE(&quot;%s&quot;, str);
+    delete student;
+    return env-&gt;
+            NewStringUTF(hello.c_str());
+}
+
+//没有返回值的JNI方法,非静态方法，非静态方法的话这里是jobject
+extern &quot;C&quot;
+JNIEXPORT void JNICALL
+Java_com_arms_ndktest_MainActivity_testNoReturnFromJNI(JNIEnv
+                                                       *env,
+                                                       jobject thiz
+) {
+    //如果是从java层传入的数组，那么直接修改操作只会在c++层生效，不会改变java层的数据
+    jintArray jintArray1;
+    int length = env-&gt;GetArrayLength(jintArray1);
+
+    int *pInt = env-&gt;GetIntArrayElements(jintArray1, NULL);
+    for (int i = 0; i &lt; length; i++) {
+        *(pInt + i) += 100;
+    }
+    //通过下面的操作杆来达到修改对应java的数据，mode的模式0 刷新java数组，释放C++层数组 JNI_COMMIT:只提交只刷新Java数组，不释放C++,JNI_ABORT:只释放C++层数据
+    env-&gt;ReleaseIntArrayElements(jintArray1, pInt, 0);
+}
+//一个测试方法，使用c++来构建一个java的对象，并设置其中的参数
+void test(JNIEnv *env) {
+
+    const char *className = &quot;com/arms/ndktest/PeopleBean&quot;;
+
+    jclass pJclass = env-&gt;FindClass(className);
+    //这种方式不会调用构造方法
+    jobject pJobject = env-&gt;AllocObject(pJclass);
+    //这种方式，说白了就是要传入一个方法，这个方法就是构造方法从而来执行指定的构造方法
+    jmethodID pJmethodId = env-&gt;GetMethodID(pJclass, &quot;&lt;init&gt;&quot;, &quot;()V&quot;);
+    jobject object = env-&gt;NewObject(pJclass, pJmethodId);
+
+    jmethodID setNameMethod = env-&gt;GetMethodID(pJclass, &quot;setName&quot;, &quot;(Ljava/lang/String;)V&quot;);
+    jmethodID setAageMethod = env-&gt;GetMethodID(pJclass, &quot;setAge&quot;, &quot;(I)V&quot;);
+
+    jstring nameValue = env-&gt;NewStringUTF(&quot;123&quot;);
+
+    env-&gt;CallVoidMethod(pJobject, setNameMethod, nameValue);
+    env-&gt;CallVoidMethod(pJobject, setAageMethod, 11);
+
+    env-&gt;DeleteLocalRef(pJclass);
+    env-&gt;DeleteLocalRef(pJobject);
+}
+
+/**
+最开始在MainActivity中来实现对应的方法，出入参数为播放的模式以及对应的音频文件路径
+*/
+extern &quot;C&quot;
+JNIEXPORT void JNICALL
+Java_com_arms_ndktest_MainActivity_voiceChangeNative(JNIEnv *env, jobject thiz, jint mode,
+                                                     jstring path) {
+    char *content_ = &quot;播放完毕&quot;;
+    const char *path_ = env-&gt;GetStringUTFChars(path, NULL);
+    LOGE(&quot;mode:%d&quot;, mode);
+    System *system = 0;
+    Sound *sound = 0;
+    Channel *channel = 0;
+    DSP *dsp = 0;
+    System_Create(&amp;system);
+    system-&gt;init(32, FMOD_INIT_NORMAL, 0);
+    system-&gt;createSound(path_, FMOD_DEFAULT, 0, &amp;sound);
+    system-&gt;playSound(sound, 0, false, &amp;channel);
+    switch (mode) {
+        case 1:
+            content_ = &quot;原声播放&quot;;
+            break;
+        case 2:
+            content_ = &quot;萝莉播放&quot;;
+            system-&gt;createDSPByType(FMOD_DSP_TYPE_PITCHSHIFT, &amp;dsp);
+            dsp-&gt;setParameterFloat(FMOD_DSP_PITCHSHIFT_PITCH, 2.0f);
+            channel-&gt;addDSP(0, dsp);
+            break;
+        case 3:
+            content_ = &quot;大叔播放&quot;;
+            // 音调低 -- 大叔 0.7
+            // 1.创建DSP类型的Pitch 音调条件
+            system-&gt;createDSPByType(FMOD_DSP_TYPE_PITCHSHIFT, &amp;dsp);
+            // 2.设置Pitch音调调节2.0
+            dsp-&gt;setParameterFloat(FMOD_DSP_PITCHSHIFT_PITCH, 0.7f);
+            // 3.添加音效进去 音轨
+            channel-&gt;addDSP(0, dsp);
+            break;
+        case 4:
+            content_ = &quot;搞怪播放&quot;;
+            // 小黄人声音 频率快
+
+            // 从音轨拿 当前 频率
+            float mFrequency;
+            channel-&gt;getFrequency(&amp;mFrequency);
+
+            // 修改频率
+            channel-&gt;setFrequency(mFrequency * 1.5f); // 频率加快  小黄人的声音
+            break;
+        case 5:
+            content_ = &quot;惊悚播放&quot;;
+            // TODO 音调低
+            // 音调低 -- 大叔 0.7
+            // 1.创建DSP类型的Pitch 音调条件
+            system-&gt;createDSPByType(FMOD_DSP_TYPE_PITCHSHIFT, &amp;dsp);
+            // 2.设置Pitch音调调节2.0
+            dsp-&gt;setParameterFloat(FMOD_DSP_PITCHSHIFT_PITCH, 0.7f);
+            // 3.添加音效进去 音轨
+            channel-&gt;addDSP(0, dsp); // 第一个音轨
+
+            // TODO 搞点回声
+            // 回音 ECHO
+            system-&gt;createDSPByType(FMOD_DSP_TYPE_ECHO, &amp;dsp);
+            dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_DELAY, 200); // 回音 延时    to 5000.  Default = 500.
+            dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_FEEDBACK, 10); // 回音 衰减度 Default = 50   0 完全衰减了
+            channel-&gt;addDSP(1, dsp); // 第二个音轨
+
+            // TODO 颤抖
+            // Tremolo 颤抖音 正常5    非常颤抖  20
+            system-&gt;createDSPByType(FMOD_DSP_TYPE_TREMOLO, &amp;dsp);
+            dsp-&gt;setParameterFloat(FMOD_DSP_TREMOLO_FREQUENCY, 20); // 非常颤抖
+            dsp-&gt;setParameterFloat(FMOD_DSP_TREMOLO_SKEW, 0.8f); // ？？？
+            channel-&gt;addDSP(2, dsp); // 第三个音轨
+            break;
+        case 6:
+            content_ = &quot;空灵播放&quot;;
+            // 回音 ECHO
+            system-&gt;createDSPByType(FMOD_DSP_TYPE_ECHO, &amp;dsp);
+            dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_DELAY, 200); // 回音 延时    to 5000.  Default = 500.
+            dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_FEEDBACK, 10); // 回音 衰减度 Default = 50   0 完全衰减了
+            channel-&gt;addDSP(0, dsp);
+            break;
+    }
+    bool isPlayer = true;
+    while (isPlayer) {
+        channel-&gt;isPlaying(&amp;isPlayer);
+        usleep(1000 * 1000);
+    }
+    sound-&gt;release();
+    system-&gt;close();
+    system-&gt;release();
+    env-&gt;ReleaseStringUTFChars(path, path_);
+}
+
+Channel *channel = 0;
+
+extern &quot;C&quot;
+JNIEXPORT jint JNICALL
+Java_com_arms_ndktest_FmodSound_saveSound(JNIEnv *env, jobject cls, jstring path_jstr, jint type,
+                                          jstring save_jstr) {
+    Sound *sound;
+    DSP *dsp;
+    bool playing = true;
+    float frequency = 0;
+    System *mSystem;
+    JNIEnv *mEnv = env;
+    int code = 0;
+    System_Create(&amp;mSystem);
+    const char *path_cstr = mEnv-&gt;GetStringUTFChars(path_jstr, NULL);
+    LOGI(&quot;saveAiSound-%s&quot;, path_cstr);
+    const char *save_cstr;
+    if (save_jstr != NULL) {
+        save_cstr = mEnv-&gt;GetStringUTFChars(save_jstr, NULL);
+        LOGI(&quot;saveAiSound-save_path=%s&quot;, save_cstr)
+    }
+    try {
+        if (save_jstr != NULL) {
+            char cDest[200];
+            strcpy(cDest, save_cstr);
+            mSystem-&gt;setSoftwareFormat(8000, FMOD_SPEAKERMODE_MONO, 0); //设置采样率为8000，channel为1
+            mSystem-&gt;setOutput(FMOD_OUTPUTTYPE_WAVWRITER); //保存文件格式为WAV
+            mSystem-&gt;init(32, FMOD_INIT_NORMAL, cDest);
+            mSystem-&gt;recordStart(0, sound, true);
+        }
+        //创建声音
+        mSystem-&gt;createSound(path_cstr, FMOD_DEFAULT, NULL, &amp;sound);
+        mSystem-&gt;playSound(sound, 0, false, &amp;channel);
+        LOGI(&quot;saveAiSound-%s&quot;, &quot;save_start&quot;)
+        switch (type) {
+            case MODE_NORMAL:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_NORMAL&quot;);
+                break;
+            case MODE_FUNNY:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_FUNNY&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_NORMALIZE, &amp;dsp);
+                channel-&gt;getFrequency(&amp;frequency);
+                frequency = frequency * 1.6;
+                channel-&gt;setFrequency(frequency);
+                break;
+            case MODE_UNCLE:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_UNCLE&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_PITCHSHIFT, &amp;dsp);
+                dsp-&gt;setParameterFloat(FMOD_DSP_PITCHSHIFT_PITCH, 0.8);
+                channel-&gt;addDSP(0, dsp);
+                break;
+            case MODE_LOLITA:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_LOLITA&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_PITCHSHIFT, &amp;dsp);
+                dsp-&gt;setParameterFloat(FMOD_DSP_PITCHSHIFT_PITCH, 1.8);
+                channel-&gt;addDSP(0, dsp);
+                break;
+            case MODE_ROBOT:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_ROBOT&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_ECHO, &amp;dsp);
+                dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_DELAY, 50);
+                dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_FEEDBACK, 60);
+                channel-&gt;addDSP(0, dsp);
+                break;
+            case MODE_ETHEREAL:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_ETHEREAL&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_ECHO, &amp;dsp);
+                dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_DELAY, 300);
+                dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_FEEDBACK, 20);
+                channel-&gt;addDSP(0, dsp);
+                break;
+            case MODE_CHORUS:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_CHORUS&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_ECHO, &amp;dsp);
+                dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_DELAY, 100);
+                dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_FEEDBACK, 50);
+                channel-&gt;addDSP(0, dsp);
+                break;
+            case MODE_HORROR:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_HORROR&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_TREMOLO, &amp;dsp);
+                dsp-&gt;setParameterFloat(FMOD_DSP_TREMOLO_SKEW, 0.8);
+                channel-&gt;addDSP(0, dsp);
+                break;
+            default:
+                break;
+        }
+        mSystem-&gt;update();
+    } catch (...) {
+        LOGE(&quot;saveAiSound-%s&quot;, &quot;save error!&quot;)
+        code = 1;
+        goto end;
+    }
+    while (playing) {
+        usleep(1000);
+        channel-&gt;isPlaying(&amp;playing);
+    }
+    LOGI(&quot;saveAiSound-%s&quot;, &quot;save over!&quot;)
+    goto end;
+    end:
+    if (path_jstr != NULL) {
+        mEnv-&gt;ReleaseStringUTFChars(path_jstr, path_cstr);
+    }
+    if (save_jstr != NULL) {
+        mEnv-&gt;ReleaseStringUTFChars(save_jstr, save_cstr);
+    }
+    sound-&gt;release();
+    mSystem-&gt;close();
+    mSystem-&gt;release();
+    return code;
+}
+
+extern &quot;C&quot;
+JNIEXPORT jint JNICALL
+Java_com_arms_ndktest_FmodSound_playSound(JNIEnv *env, jobject thiz, jstring path, jint type) {
+}
+extern &quot;C&quot;
+JNIEXPORT void JNICALL
+Java_com_arms_ndktest_FmodSound_stopPlay(JNIEnv *env, jobject thiz) {
+    channel-&gt;stop();
+}
+extern &quot;C&quot;
+JNIEXPORT void JNICALL
+Java_com_arms_ndktest_FmodSound_resumePlay(JNIEnv *env, jobject thiz) {
+    channel-&gt;stop();
+    //检测当前的env执行过程是否有异常发生
+    jthrowable pJthrowable = env-&gt;ExceptionOccurred();
+    if (pJthrowable) {
+        //主动清除异常
+        env-&gt;ExceptionClear();
+        //JNI中主动抛出异常
+        jclass throwClass = env-&gt;FindClass(&quot;java/lang/NoSuchFieldError&quot;);
+        env-&gt;ThrowNew(throwClass, &quot;dfsdf&quot;);
+    }
+}
+extern &quot;C&quot;
+JNIEXPORT void JNICALL
+Java_com_arms_ndktest_FmodSound_pausePlay(JNIEnv *env, jobject thiz) {
+    channel-&gt;stop();
+}
+extern &quot;C&quot;
+JNIEXPORT jboolean JNICALL
+Java_com_arms_ndktest_FmodSound_isPlaying(JNIEnv *env, jobject thiz) {
+    bool isPlaying = false;
+    channel-&gt;isPlaying(&amp;isPlaying);
+    return isPlaying;
+}
+
+JavaVM *javaVm = nullptr;
+
+/**
+ * JNIEnv *env 不能跨越线程，可以跨越函数  解决方案通过JavaVM.attchCurrentThread获取子线程的JNIEnv
+ * jobject thiz 不能跨越线程和函数  这个通过提升为全局变量来解决
+ * JavaVM *javaVm 可以跨越线程和函数
+ *
+ * 动态注册的代码
+ * @param javaVm
+ * @return
+ */
+JNIEXPORT jint JNI_OnLoad(JavaVM *javaVm, void *) {
+    //::javaVm = javaVm;
+    JNIEnv *jniEnv = nullptr;
+    int result = javaVm-&gt;GetEnv(reinterpret_cast&lt;void **&gt;(&amp;jniEnv), JNI_VERSION_1_6);
+    if (result != JNI_OK) {
+        return -1;
+    }
+    return JNI_VERSION_1_6;
+}
+
+class MyContext {
+public:
+    JNIEnv *jniEnv = nullptr;
+    jobject instance = nullptr;
+};
+
+void *myThreadTaskAction(void *pVoid) {
+    //这个函数中指针运行在子线程中
+    MyContext *myContext = static_cast&lt;MyContext *&gt;(pVoid);
+    JNIEnv *jniEnv = nullptr;
+    //通过JavaVM.attchCurrentThread获取子线程的JNIEnv
+    jint result = ::javaVm-&gt;AttachCurrentThread(&amp;jniEnv, nullptr);
+    if (result != JNI_OK) {
+        return 0;
+    }
+    jclass activityClass = jniEnv-&gt;GetObjectClass(myContext-&gt;instance);
+
+    jmethodID methodId = jniEnv-&gt;GetMethodID(activityClass, &quot;showAlter&quot;, &quot;()V&quot;);
+
+    jniEnv-&gt;CallVoidMethod(myContext-&gt;instance, methodId);
+
+    ::javaVm-&gt;DetachCurrentThread();
+    return nullptr;
+}
+
+
+/**
+ * 在C++的子线程中回掉Java层代码
+ */
+extern &quot;C&quot;
+JNIEXPORT void JNICALL
+Java_com_arms_ndktest_MainActivity_callJNIAsync(JNIEnv *env, jobject thiz) {
+    env-&gt;GetJavaVM(&amp;::javaVm);
+    auto *myContext = new MyContext;
+    myContext-&gt;jniEnv = env;
+    //jobject thiz 不能跨越线程和函数  这个通过提升为全局变量来解决
+    myContext-&gt;instance = env-&gt;NewGlobalRef(thiz);
+    pthread_t pid;
+    //c中的创建子线程
+    pthread_create(&amp;pid, nullptr, myThreadTaskAction, myContext);
+    pthread_join(pid, nullptr);
+}
+</code></pre>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[在不同版本下通过Hook来启动插件activity的流程]]></title>
+        <id>https://arms-merchants.github.io/post/zai-bu-tong-ban-ben-xia-tong-guo-hook-lai-qi-dong-cha-jian-activity-de-liu-cheng/</id>
+        <link href="https://arms-merchants.github.io/post/zai-bu-tong-ban-ben-xia-tong-guo-hook-lai-qi-dong-cha-jian-activity-de-liu-cheng/">
+        </link>
+        <updated>2022-03-21T01:16:29.000Z</updated>
+        <content type="html"><![CDATA[<p>不论哪个版本在启动插件Activity之前都需要通过DexPathLoader来进行相应的加载，这个部分不在此次内容中。<br>
+版本区分的话这里是根据Activity的启动流程差异来进行相应的替换，基本思路一致，版本划分的话主要是8.0以下，10.0以下，10.0及以上版本。</p>
+<h2 id="1hook替换intent">1.Hook替换Intent</h2>
+<pre><code class="language-java">    private const val TARGET_INTENT = &quot;target_intent&quot;
+    fun hookAMS() {
+        try {
+            LogE(Build.VERSION.SDK_INT.toString())
+            //1。获取Singleton对象
+            val singletonFieldParams =
+                when {
+                    (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.O) -&gt; {
+                        //8.0以下
+                        &quot;android.app.ActivityManagerNative&quot; to &quot;gDefault&quot;
+                    }
+                    (Build.VERSION.SDK_INT&lt;Build.VERSION_CODES.Q)-&gt;{
+                        //10.0以下
+                        &quot;android.app.ActivityManager&quot; to &quot;IActivityManagerSingleton&quot;
+                    }
+                    else -&gt; {
+                        //10.0及以上
+                        &quot;android.app.ActivityTaskManager&quot; to &quot;IActivityTaskManagerSingleton&quot;
+                    }
+                }
+            val aClass = Class.forName(singletonFieldParams.first)
+            val singletonField = aClass.getDeclaredField(singletonFieldParams.second)
+            singletonField.isAccessible = true
+            val singleton = singletonField[null]
+            val singletonClazz = Class.forName(&quot;android.util.Singleton&quot;)
+            val mInstanceFiled = singletonClazz.getDeclaredField(&quot;mInstance&quot;)
+            mInstanceFiled.isAccessible = true
+            val mInstance = mInstanceFiled[singleton]
+
+            //2。获取Singleton中的IActivityTaskManager对象,区分版本10以下
+            val proxyClass =
+                if (Build.VERSION.SDK_INT &lt; Build.VERSION_CODES.Q) {
+                    Class.forName(&quot;android.app.IActivityManager&quot;)
+                } else {
+                    Class.forName(&quot;android.app.IActivityTaskManager&quot;)
+                }
+            //3.创建动态代理
+            val newProxyInstance = Proxy.newProxyInstance(
+                Thread.currentThread().contextClassLoader,
+                arrayOf(proxyClass)
+            ) { proxy, method, args -&gt; //这里已经代理了IActivityTaskManagerSingleton
+                // 对象，那么它的方法执行都会到这里，那么我们只要要获取获取对应的方法，那么就可以获取方法中的参数
+                //参数当中是有Intent，那么这里就可以修改为宿主中Activity来执行
+                //只需要处理startActivities的方法
+                //这里代理的对象方法是在android8以后的版本
+                try {
+                    var index = -1
+                    if (&quot;startActivity&quot; == method.name) {
+                        index = args.indexOfFirst { it is Intent }
+                        val defIntent = args[index] as Intent
+                        val proxyIntent = Intent()
+                        proxyIntent.setClassName(
+                            &quot;com.arm.arount&quot;, &quot;com&quot; +
+                                    &quot;.arm.arount.ProxyActivity&quot;
+                        )
+                        proxyIntent.putExtra(TARGET_INTENT, defIntent)
+                        args[index] = proxyIntent
+                    }
+                    method.invoke(mInstance, *args.orEmpty())
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+            //4.修改singleton的代理对象
+            mInstanceFiled[singleton] = newProxyInstance
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+</code></pre>
+<p>到上面一步我们已经完成了hook startActivity的流程，并且将启动插件的Intent替换为了宿主代理的Intent，并在其中保存了原始的Intent。那么下一步我们就需要在合适的实际替换回原始的Intent。</p>
+<h2 id="2替换回原始intent">2.替换回原始Intent</h2>
+<p>先上代码：</p>
+<pre><code class="language-java">fun hookHandleIntent() {
+        try {
+            //获取ActivityThread
+            val aClass = Class.forName(&quot;android.app.ActivityThread&quot;)
+            //获取它的静态实例对象
+            val sCurrentActivityThread = aClass.getDeclaredField(&quot;sCurrentActivityThread&quot;)
+            sCurrentActivityThread.isAccessible = true
+            val activityThread = sCurrentActivityThread[null]
+            val mHField = aClass.getDeclaredField(&quot;mH&quot;)
+            mHField.isAccessible = true
+            val handler = mHField[activityThread] as Handler
+            val mCallbackField = Handler::class.java.getDeclaredField(&quot;mCallback&quot;)
+            mCallbackField.isAccessible = true
+            val callback = Handler.Callback { msg -&gt;
+                try {
+                    when (msg.what) {
+                        //Android8.0以下的处理的LaunchActivity
+                        100 -&gt; {
+                            val intentField = msg.obj.javaClass.getDeclaredField(&quot;intent&quot;)
+                            intentField.isAccessible = true
+                            val proxyIntent: Intent = intentField.get(msg.obj) as Intent
+                            val intent = proxyIntent.getParcelableExtra&lt;Intent?&gt;(TARGET_INTENT)
+                            intent?.let {
+                                intentField.set(msg.obj, it)
+                            }
+                        }
+                        //8.0以上的生命周期入口
+                        159 -&gt; {
+                            val mActivityCallbacksField = msg.obj.javaClass.getDeclaredField(
+                                &quot;mActivityCallbacks&quot;
+                            )
+                            mActivityCallbacksField.isAccessible = true
+                            val mActivityCallbacks = mActivityCallbacksField[msg.obj] as List&lt;*&gt;
+                            val launchActivityItem = mActivityCallbacks.firstOrNull {
+                                &quot;android.app.servertransaction.LaunchActivityItem&quot; == it?.javaClass?.name
+                            }
+                            launchActivityItem?.let {
+                                val mIntentField = it.javaClass.getDeclaredField(&quot;mIntent&quot;)
+                                mIntentField.isAccessible = true
+                                val proxyIntent = mIntentField[launchActivityItem] as Intent
+                                val intent =
+                                    proxyIntent.getParcelableExtra&lt;Intent&gt;(TARGET_INTENT)
+                                if (intent != null) {
+                                    mIntentField[launchActivityItem] = intent
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                //这里一定要返回false不然正常流程的handleMessage就执行不到了
+                false
+            }
+            mCallbackField[handler] = callback
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+</code></pre>
+<p>属性activity启动流程的因为都发现我们是在ActivityThread的mh的Handler中拦截消息的，Handler中有一个CallBack对象，可以在handleMessage之前拿到msg</p>
+<pre><code class="language-java">    public void dispatchMessage(@NonNull Message msg) {
+        if (msg.callback != null) {
+            handleCallback(msg);
+        } else {
+            if (mCallback != null) {
+                //这里就是一定要返回false的原因
+                if (mCallback.handleMessage(msg)) {
+                    return;
+                }
+            }
+            handleMessage(msg);
+        }
+    }
+</code></pre>
+<p>在拿到msg之后我们需要处理以下8.0以下以及8.0以上的区分：<br>
+· 在Android8.0以下时，是在ActivityThread的Handler中处理<br>
+100-109这几个值来处理不同的生命周期的，并且在msg中可以直接获取到Intent对象。<br>
+· 而在Android8.0以后，这几个值没有了，统一为159的入口，并通过状态模式来处理，并且相应的参数有封装，我们需要获取一些包装参数之后才能获取到Intent。</p>
+<p>到这里插件的Activity就可以启动了，但是你会发现资源布局都没法加载，下面再说插件资源的加载。</p>
+<hr>
+<p>Hook的方式来进行插件化开发，很受系统版本的限制，并且随着Android系统版本的升级要做不同的适配。所以还有另外一种插件方案就是通过容器来实现插件化，这种方式不需要hook太多的系统代码，腾讯的Shadow插件就是这个来实现的，宿主的app中有的是容器的activity,编写的业务插件按原来的逻辑继承Activity，但是在编译打包的时候通过插件将其继承改为ShadowActivity，这里其实是改为了普通类，而在代理类中通过调用这些方法，从而实现了生命周期方法的调用，不过这里都避免不了加载插件的过程，所有DexClassLoader还是必须要加载使用的，这也是热修复的基础。</p>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Kotlin反射]]></title>
+        <id>https://arms-merchants.github.io/post/kotlin-fan-she/</id>
+        <link href="https://arms-merchants.github.io/post/kotlin-fan-she/">
+        </link>
+        <updated>2022-03-15T07:26:22.000Z</updated>
+        <content type="html"><![CDATA[<p>kotlin可以直接使用java的反射，如果要使用kotlin的反射，那么需要单独引入kotlin的反射库</p>
+<pre><code class="language-java">implementation &quot;org.jetbrains.kotlin:kotlin-reflect&quot;  
+</code></pre>
+<p>那么这和Java对比的话有什么区别</p>
+<h2 id="java">Java</h2>
+<ul>
+<li>
+<p>优点：无需引入额外依赖，首次使用速度相对较快(这是因为它的信息都在虚拟机内)。</p>
+</li>
+<li>
+<p>缺点：无法访问Kotlin语法特性，需要对Kotlin生成的字节码足够了解(这是因为Kotlin程序编译完之后也是个Java类，所以在Java反射视角下看到的Kotlin编译的状态和一般Java类无异，这个时候如果要通过反射访问Kotlin类的一些方法属性，必须要知道它编译什么样的字节码)</p>
+</li>
+</ul>
+<h2 id="kotlin">kotlin</h2>
+<ul>
+<li>
+<p>优点：支持访问Kotlin几乎所有特性，API设计兼容性更好。</p>
+</li>
+<li>
+<p>缺点：额外引入了一个Kotlin反射库(这个库2.5M左右，编译后400KB)，首次调用会慢一些，这是因为Kotlin的反射信息是写到Metadata这个注解里面的(通过查看字节码可以看到，如下)，里面的数据通过Protobuf的数据格式序列化二进制写入，所以首次反射调用有一个获取注解并反序列化的过程)。</p>
+</li>
+</ul>
+<pre><code class="language-kotlin">
+@Metadata(
+   mv = {1, 6, 0},
+   k = 1,
+   d1 = {&quot;\u0000\u001a\n\u0002\u0018\u0002\n\u0000\n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0002\b\u0002\n\u0002\u0010\u0002\n\u0002\b\u0003\u0018\u0000*\n\b\u0000\u0010\u0001 \u0000*\u00020\u00022\u00020\u0003B\u0005¢\u0006\u0002\u0010\u0004J\u0013\u0010\u0005\u001a\u00020\u00062\u0006\u0010\u0007\u001a\u00028\u0000¢\u0006\u0002\u0010\b¨\u0006\t&quot;},
+   d2 = {&quot;Lcom/qisan/kotlinstu/Dustbin;&quot;, &quot;T&quot;, &quot;Lcom/qisan/kotlinstu/Waste;&quot;, &quot;&quot;, &quot;()V&quot;, &quot;put&quot;, &quot;&quot;, &quot;t&quot;, &quot;(Lcom/qisan/kotlinstu/Waste;)V&quot;, &quot;KotlinStu.app&quot;}
+)
+</code></pre>
+<h2 id="一些在kotlin反射中的常用api">一些在Kotlin反射中的常用Api:</h2>
+<pre><code class="language-java">        var cls: KClass&lt;String&gt; = String::class
+        //KClass转为java的Class&lt;String&gt;
+        var clsJava: Class&lt;String&gt; = cls.java
+        //java的Class&lt;String&gt;转为KClass
+        cls = clsJava.kotlin
+        //获取定义在String类的属性，返回的是Collections
+        val properties = cls.declaredMemberProperties
+        //返回这个类中的所有方法
+        cls.declaredFunctions
+        //返回这个类中的所有非静态非扩展的函数
+        cls.declaredMemberFunctions
+        //返回这个类中中的扩展函数,注意看下面的类A
+        cls.declaredMemberExtensionFunctions
+
+        cls.isAbstract//是否是抽象类
+        cls.isCompanion//是否是伴生对象
+        cls.nestedClasses//获取当前类的内部类
+        cls.objectInstance//如果是object，可以通过这个方法获取
+</code></pre>
+<h3 id="1declaredmemberextensionfunctions的式例">1.declaredMemberExtensionFunctions的式例</h3>
+<pre><code class="language-java">class A {
+
+    fun test(){
+        //这里的反射属性通过这个是可以获取到这个String.pass的扩展方法
+        A::class.declaredMemberExtensionFunctions
+        //但是通过String是获取不到
+        String::class.declaredMemberExtensionFunctions
+        &quot;&quot;.pass()
+    }
+
+    fun String.pass(){
+    }
+}
+</code></pre>
+<p>在A的扩展函数中能够获取到String.pass的扩展方法，但是String::class.declaredMemberExtensionFunctions是没有的，而在顶级的扩展函数中是构建成静态方法的.</p>
+<pre><code class="language-java">fun String.pass() {
+    println(&quot;test&quot;)
+}
+//ktx.kt 对应到的java代码
+@Metadata(
+   mv = {1, 6, 0},
+   k = 2,
+   d1 = {&quot;\u0000\f\n\u0000\n\u0002\u0010\u0002\n\u0002\u0010\u000e\n\u0000\u001a\n\u0010\u0000\u001a\u00020\u0001*\u00020\u0002¨\u0006\u0003&quot;},
+   d2 = {&quot;pass&quot;, &quot;&quot;, &quot;&quot;, &quot;Arount.app&quot;}
+)
+public final class KtxKt {
+   public static final void pass(@NotNull String $this$pass) {
+      Intrinsics.checkNotNullParameter($this$pass, &quot;$this$pass&quot;);
+      String var1 = &quot;test&quot;;
+      System.out.println(var1);
+   }
+}
+</code></pre>
+<h3 id="2ktype的获取">2.KType的获取</h3>
+<pre><code class="language-java">   fun testKType(){
+        val mapType = typeOf&lt;Map&lt;String,Int&gt;&gt;()
+        mapType.arguments.forEach {
+            print(it)
+        }
+        /**
+         * 输出结果：
+         * kotlin.String
+         * kotlin.Int
+         * KType可以找到泛型实参
+         */
+    }
+</code></pre>
+<h3 id="3获取接口方法的返回的泛型实例参数类型">3.获取接口方法的返回的泛型实例参数类型</h3>
+<pre><code class="language-java">interface Api{
+    fun getUsers():List&lt;UserModel&gt;
+}
+
+data class UserModel(var id:Int,var name:String)
+
+fun testGetFunParamsType(){
+        Api::class.declaredFunctions.first { it.name == &quot;getUsers&quot; }
+            .returnType.arguments.forEach {
+                print(it)
+            }
+        //两者相同
+        Api::getUsers.returnType.arguments.forEach {
+            print(it)
+        }
+    }
+</code></pre>
+<h3 id="4获取实例对象上的泛型约束类型">4.获取实例对象上的泛型约束类型</h3>
+<pre><code class="language-java">abstract class SuperType&lt;T&gt;{
+    val typeParameter by lazy {
+        //this表示的是子类的实例，因为抽象类不能用于创建实例，只能背当做父类被子类继承
+        this::class.supertypes.first().arguments.first().type
+        //如果有多个子类继承 比如class SubType2:SubType(){} 
+        //这个时候this::class.supertype会空，因为SubType没有泛型实参这时候要使用：
+        this::class.allSupertypes.first().arguments.first().type
+    }
+}
+
+open class SubType:SuperType&lt;String&gt;()
+
+class SubType2:SubType()
+
+fun testGetParentType(){
+    val subType = SubType()
+    subType.typeParameter.let {
+        print(it)
+        //kotlin.String
+    }
+}
+</code></pre>
+<h2 id="场景引用-深层拷贝">场景引用-深层拷贝</h2>
+<pre><code class="language-java">    data class Person(val id: Int, val name: String, val group: Group)
+    data class Group(val id: Int, val name: String)
+
+/**
+ * 深层数据拷贝
+ */
+fun &lt;T:Any&gt; T.deepCopy():T{
+    if(!this::class.isData){
+        return this
+    }
+    return this::class.primaryConstructor!!.let { primaryConstructor-&gt;
+        primaryConstructor.parameters.associate { parameter -&gt;
+            val value =
+                (this::class as KClass&lt;T&gt;).memberProperties.first { it.name == parameter.name }
+                    .get(this)
+            if ((parameter.type.classifier as? KClass&lt;*&gt;)?.isData == true) {
+                parameter to value?.deepCopy()
+            } else {
+                parameter to value
+            }
+        }
+            .let {
+                primaryConstructor.callBy(it)
+                //primaryConstructor是KFunction&lt;T&gt;类型 KFunction&lt;T&gt;里面有callBy方法 只要传一个map，返回调用者的参数类型T
+            }
+    }
+}
+
+    private fun testCopy() {
+        val group = Group(1, &quot;11111&quot;)
+        val person = Person(1, &quot;haha&quot;, group)
+        //浅层拷贝实际上就是new了一个新的对象，并将当前类的属性传入，那么group就传入的是同一个了
+        val copyPerson = person.copy()
+        //也就是说通过copy的方法，实现的拷贝中group还是指向的同一个，那么相应的修改就会造成同步的修改
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, (person === copyPerson).toString()) //false
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, (person.group === copyPerson.group).toString()) //true
+
+        //深层拷贝的第一次是真的慢
+        val startTime = System.currentTimeMillis()
+        val deepCope = person.deepCopy()
+        val endTime = System.currentTimeMillis()
+
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, &quot;cost time:${endTime - startTime}&quot;)
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, (person === deepCope).toString()) //false
+        Log.e(&quot;&gt;&gt;&gt;&gt;&gt;&gt;&gt;&quot;, (person.group === deepCope.group).toString()) //false
+    }
+</code></pre>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[ANR以及电量优化]]></title>
+        <id>https://arms-merchants.github.io/post/anr-yi-ji-dian-liang-you-hua/</id>
+        <link href="https://arms-merchants.github.io/post/anr-yi-ji-dian-liang-you-hua/">
+        </link>
+        <updated>2022-03-01T01:07:44.000Z</updated>
+        <content type="html"><![CDATA[<h1 id="app启动优化分析"><a href="https://mp.weixin.qq.com/s/_8ZzgmmP4Ov66f42sBHslA">App启动优化分析</a></h1>
+<h2 id="1anr是什么">1.ANR是什么？</h2>
+<p>ANR(Application Not Responding)程序未响应，Android系统中如果在预定的时间内未得到有效的响应或响应时间过长，都会产生ANR，程序的响应性由ActivityManager和WindowManager系统服务监视。</p>
+<h2 id="2anr的产生原因">2.ANR的产生原因？</h2>
+<ul>
+<li>对于前台服务，则超时为SERVICE_TIMEOUT = 20s；</li>
+<li>对于后台服务，则超时为SERVICE_BACKGROUND_TIMEOUT = 200s</li>
+<li>对于前台广播，则超时为BROADCAST_FG_TIMEOUT = 10s；</li>
+<li>对于后台广播，则超时为BROADCAST_BG_TIMEOUT = 60s;</li>
+<li>ContentProvider超时为CONTENT_PROVIDER_PUBLISH_TIMEOUT = 10s;</li>
+<li>InputDispatching Timeout: 输入事件分发超时5s，包括按键和触摸事件。</li>
+</ul>
+<p><code>注意事项: Input的超时机制与其他的不同，对于input来说即便某次事件执行时间超过timeout时长，只要用户后续在没有再生成输入事件，则不会触发ANR</code></p>
+<ul>
+<li>
+<p>Service超时检测机制：</p>
+<ul>
+<li>超过一定时间没有执行完相应操作来触发移除延时消息，则会触发anr;</li>
+</ul>
+</li>
+<li>
+<p>BroadcastReceiver超时检测机制：</p>
+<ul>
+<li>有序广播的总执行时间超过 2* receiver个数 * timeout时长，则会触发anr;<br>
+有序广播的某一个receiver执行过程超过 timeout时长，则会触发anr;</li>
+</ul>
+</li>
+<li>
+<p>另外:</p>
+<ul>
+<li>对于Service, Broadcast, Input发生ANR之后,最终都会调用AMS.appNotResponding;</li>
+<li>对于provider,在其进程启动时publish过程可能会出现ANR, 则会直接杀进程以及清理相应信息,而不会弹出ANR的对话框</li>
+</ul>
+</li>
+</ul>
+<h2 id="3anr的定位分析">3.ANR的定位分析</h2>
+<ol>
+<li>前台ANR发生后，系统会马上去抓取现场的信息，用于调试分析，收集的信息如下:</li>
+</ol>
+<ul>
+<li>将am_anr信息输出到EventLog，也就是说ANR触发的时间点最接近的就是EventLog中输出的am_anr信息</li>
+<li>收集以下重要进程的各个线程调用栈trace信息，保存在data/anr/traces.txt文件
+<ul>
+<li>当前发生ANR的进程，system_server进程以及所有persistent进程</li>
+<li>audioserver, cameraserver, mediaserver, surfaceflinger等重要的native进程</li>
+<li>CPU使用率排名前5的进程</li>
+</ul>
+</li>
+<li>将发生ANR的reason以及CPU使用情况信息输出到main log</li>
+<li>将traces文件和CPU使用情况信息保存到dropbox，即data/system/dropbox目录</li>
+<li>对用户可感知的进程则弹出ANR对话框告知用户，对用户不可感知的进程发生ANR则直接杀掉</li>
+</ul>
+<ol start="2">
+<li>分析步骤
+<ol>
+<li>定位发生ANR时间点</li>
+<li>查看trace信息</li>
+<li>分析是否有耗时的message,binder调用，锁的竞争，CPU资源的抢占</li>
+<li>结合具体的业务场景的上下文来分析</li>
+</ol>
+</li>
+</ol>
+<h2 id="4电量优化工具">4.电量优化工具</h2>
+<pre><code>Profiler - NetWork(网络分析),CPU（CPU使用分析，查看当前CPU运行的状态，判断卡顿发生时的状态）,Memory（内存使用分析，内存抖动，内存泄漏，OOM的分析）
+</code></pre>
+<h2 id="5电量优化方案">5.电量优化方案</h2>
+<p>减少操作，例如数据下载是否每次都需要去更新最新的数据，是否有缓存的必要。<br>
+推迟操作，一些耗电操作是否在特定的状态下（电量满或者充电状态下）进行，例如持续的定位<br>
+合并操作<br>
+DNS的优化：HTTPDNS，可以接入三方提供的dns解析，<a href="https://help.aliyun.com/product/30100.html"><code>阿里云HTTPDNS</code></a><br>
+数据压缩：Ptotobuf</p>
+<h3 id="阿里mavne"><a href="https://developer.aliyun.com/mvn/view"><code>阿里Mavne</code></a></h3>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[常用的数据结构分析]]></title>
+        <id>https://arms-merchants.github.io/post/chang-yong-de-shu-ju-jie-gou-fen-xi/</id>
+        <link href="https://arms-merchants.github.io/post/chang-yong-de-shu-ju-jie-gou-fen-xi/">
+        </link>
+        <updated>2022-02-22T01:37:02.000Z</updated>
+        <content type="html"><![CDATA[<p>常用的数据结构<br>
+ArrayList：底层由数组实现，所以它在内存中是一块连续的空间</p>
+<pre><code class="language-java">/**
+两种情况，一种是直接在添加，那么它是添加在数组的最后，这个时候只需要让size++的元素填充为e
+*/
+    public boolean add(E e) {
+        ensureCapacityInternal(size + 1);  // Increments modCount!!
+        elementData[size++] = e;
+        return true;
+    }
+/**
+在指定的位置插入，System.arraycopy首先会将当前index到数组最后的元素后移拷贝一份，再将插入的元素插入index
+*/
+    public void add(int index, E element) {
+        if (index &gt; size || index &lt; 0)
+            throw new IndexOutOfBoundsException(outOfBoundsMsg(index));
+
+        ensureCapacityInternal(size + 1);  // Increments modCount!!
+        System.arraycopy(elementData, index, elementData, index + 1,
+                         size - index);
+        elementData[index] = element;
+        size++;
+    }
+</code></pre>
+<p>所以在add的时候如果是发生在中间的情况下，那么会发生一次数据拷贝</p>
+<pre><code class="language-java">  public E remove(int index) {
+        if (index &gt;= size)
+            throw new IndexOutOfBoundsException(outOfBoundsMsg(index));
+
+        modCount++;
+        E oldValue = (E) elementData[index];
+
+        int numMoved = size - index - 1;
+        if (numMoved &gt; 0)
+            System.arraycopy(elementData, index+1, elementData, index,
+                             numMoved);
+        elementData[--size] = null; // clear to let GC do its work
+
+        return oldValue;
+    }
+</code></pre>
+<p>remove的操作同理，取出index坐标下的对象，然后通过数据拷贝将index+1到末尾的数据向前拷贝一位，并将数组中最后一位置为null，等待GC。</p>
+<pre><code class="language-java">        public E get(int index) {
+            if (index &lt; 0 || index &gt;= this.size)
+              throw new IndexOutOfBoundsException(outOfBoundsMsg(index));
+            if (ArrayList.this.modCount != this.modCount)
+                throw new ConcurrentModificationException();
+            return (E) ArrayList.this.elementData[offset + index];
+        }
+</code></pre>
+<p>而因为ArrayList在内存中是一个连续的内存空间，所以当它声明后它的地址是已知的，如果在内部存入一个Object的对象（4个字节）那么只需要在这个地址上加4就能查询到对应的数据。<br>
+所以ArrayList在进行查询，和直接添加时效率高，但是在进行中间插入以及删除时会因为要进行一次数据拷贝，效率不高。<br>
+与ArrayList通常进行比较的是LinkedList，一个由链表机构构成的数据结构，它在内存中不是一块连续的空间，双向链表。</p>
+<pre><code class="language-java">    private static class Node&lt;E&gt; {
+        //当前节点
+        E item;
+        //前驱
+        Node&lt;E&gt; next;
+        //后驱
+        Node&lt;E&gt; prev;
+
+        Node(Node&lt;E&gt; prev, E element, Node&lt;E&gt; next) {
+            this.item = element;
+            this.next = next;
+            this.prev = prev;
+        }
+    }
+</code></pre>
+<p>链表结构带来的好处是，在进行数据插入和删除时，只需要修改节点的前驱和后驱指向就可以实现，并不需要进行数据的拷贝，但是如果要进行数据查询的话</p>
+<pre><code class="language-java">    public void add(int index, E element) {
+        checkPositionIndex(index);
+
+        if (index == size)
+            linkLast(element);
+        else
+            linkBefore(element, node(index));
+    }
+    //返回指定下标的对象,get的实现也是通过这个方法来进行，所以我们没有办法通过第一个节点知道第10节点的对象，必须要进行循环查询。
+    Node&lt;E&gt; node(int index) {
+        // assert isElementIndex(index);
+
+        if (index &lt; (size &gt;&gt; 1)) {
+            Node&lt;E&gt; x = first;
+            for (int i = 0; i &lt; index; i++)
+                x = x.next;
+            return x;
+        } else {
+            Node&lt;E&gt; x = last;
+            for (int i = size - 1; i &gt; index; i--)
+                x = x.prev;
+            return x;
+        }
+    }
+    //在succ之前插入一个元素，就是把succ的前驱节点设置给e，pred的后驱指向e，succ的前驱指向e，这样就完成了数据插入的操作。删除反之。
+    void linkBefore(E e, Node&lt;E&gt; succ) {
+        // assert succ != null;
+        final Node&lt;E&gt; pred = succ.prev;
+        final Node&lt;E&gt; newNode = new Node&lt;&gt;(pred, e, succ);
+        succ.prev = newNode;
+        if (pred == null)
+            first = newNode;
+        else
+            pred.next = newNode;
+        size++;
+        modCount++;
+    }
+</code></pre>
+<p>所以LinkedList是一种增删效率快，但是查询慢的数据结构。<br>
+那么有没有一种数据结构是同时具有两者优点的，HashMap<br>
+HashMap在1.7之前后之后的版本是不同的实现<br>
+之前的HashMap结构是由数组➕链表构成的<br>
+之后的HashMap是由数组➕链表➕红黑树构成的</p>
+<p>hash碰撞的出现，以及解决方法？<br>
+HashMap的默认大小-》16</p>
+<pre><code class="language-java">  static final int DEFAULT_INITIAL_CAPACITY = 1 &lt;&lt; 4; // aka 16
+</code></pre>
+<p>HashMap什么时候扩容？由什么决定的？</p>
+<p>长度为2的次幂的意义？<br>
+减小碰撞的可能<br>
+例子：<br>
+Length1 =10<br>
+Length2= 16</p>
+<p>H1  110 = 6<br>
+H2 111 = 7</p>
+<p>L1 ：9 = 1001<br>
+L2 ：15 = 1111</p>
+<p>分别求模<br>
+110<br>
+1001   0000</p>
+<p>111<br>
+1001 0001</p>
+<p>110<br>
+1111   0110</p>
+<p>111<br>
+1111 0111<br>
+可以发现非2次幂的情况下，中间两位为0，那么它就没有计算的意义，只有高位和低位有决定作用，而在2次幂的情况下，都为1那么都参与运算，减少了hashcode的冲突可能。</p>
+<p>加载因子：</p>
+<pre><code class="language-java">    static final float DEFAULT_LOAD_FACTOR = 0.75f;
+</code></pre>
+<p>阙值：0.75*16（length） = 12，就是如果是默认长度的情况下，如果数组长度》=12的话，那么就扩容。</p>
+<p>扩容的意义：均匀分布，减小冲突</p>
+<p>Android特有的数据结构：<br>
+SparseArray:双数组分别存储key和value，但key必须为int类型的数据，通过二分查找的方式去查询key的位置。<br>
+ArrayMap:</p>
+<pre><code class="language-java">        mHashes[index] = hash;
+        mArray[index&lt;&lt;1] = key;
+        mArray[(index&lt;&lt;1)+1] = value;
+</code></pre>
+<p>通过key的hash值查找在mHashes中的下标位置，并将key和value存入对应规则的indx下标对应的位置。<br>
+这里解决了SparseArray的key只能为int类型的限制，也是通过两个数组实现，两个数组分别存储的是key的Hash值，另外一个数组存储的是key和value，所以mArray的长度是mHashes的2倍，在mArray的下标也是2倍为key，2倍加1为value。<br>
+ArrayMap是如何解决Hash碰撞的：</p>
+<pre><code class="language-java">int indexOf(Object key, int hash) {
+        final int N = mSize;
+
+        // Important fast case: if nothing is in here, nothing to look for.
+        if (N == 0) {
+            return ~0;
+        }
+
+        int index = binarySearchHashes(mHashes, N, hash);
+
+        // If the hash code wasn't found, then we have no entry for this key.
+        if (index &lt; 0) {
+            return index;
+        }
+
+        // If the key at the returned index matches, that's what we want.
+        //通过hash获取一个下标后，在实际存储key和value的数组中拿出来跟实际的key比较一下，
+        //如果一样说明就是我们需要查找的下标位置
+        if (key.equals(mArray[index&lt;&lt;1])) {
+            return index;
+        }
+
+        // Search for a matching key after the index.
+        int end;
+        //因为如果出现hash碰撞的情况下，会将mHashes中存储的index加1直到没有冲突为止
+        //上一步获取到的key和实际的key不一样，就是出现了hash碰撞，那么在以这个index+1的起点向右查找,因为hash发生了碰撞，那么在一个范围内存储的hash是一样的，我们只需要在这个一样hash范围内查找
+        for (end = index + 1; end &lt; N &amp;&amp; mHashes[end] == hash; end++) {
+            if (key.equals(mArray[end &lt;&lt; 1])) return end;
+        }
+        //向前查找
+        // Search for a matching key before the index.
+        for (int i = index - 1; i &gt;= 0 &amp;&amp; mHashes[i] == hash; i--) {
+            if (key.equals(mArray[i &lt;&lt; 1])) return i;
+        }
+
+        // Key not found -- return negative value indicating where a
+        // new entry for this key should go.  We use the end of the
+        // hash chain to reduce the number of array entries that will
+        // need to be copied when inserting.
+        return ~end;
+    }
+</code></pre>
+<p>所以相对于HashMap，这两者都是优化了内存空间的使用，因为HashMap是采用空间换时间的策略，只要到达75%的容量就会翻倍扩容，哪怕是只存储一个数据。</p>
+<p>位运算：</p>
+<ul>
+<li>&lt;&lt;: 左移运算符号： num&lt;&lt;1 ,相当于num乘以2</li>
+<li>
+<blockquote>
+<blockquote>
+<p>: 右移运算符号： num&gt;&gt;1 ,相当于num除以2</p>
+</blockquote>
+</blockquote>
+</li>
+<li>
+<blockquote>
+<blockquote>
+<blockquote>
+<p>:无符号右移，忽略符号位，空位都以0补齐</p>
+</blockquote>
+</blockquote>
+</blockquote>
+</li>
+</ul>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Handler]]></title>
+        <id>https://arms-merchants.github.io/post/handle/</id>
+        <link href="https://arms-merchants.github.io/post/handle/">
+        </link>
+        <updated>2022-01-05T06:11:07.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="一些面试问题">一些面试问题：</h2>
+<ul>
+<li>1.一个线程有几个Handler？</li>
+<li>2.一个线程有几个looper，如何保证的？</li>
+<li>3.Handler内存泄漏原因？为什么其他的内部类没有说过这个问题？</li>
+<li>4.为何主线程可以new Handler？如果想要在子线程中new handler要做什么准备</li>
+<li>5.子线程中维护的Looper，消息队列无消息的时候处理方案是什么？有什么用？</li>
+<li>6.既然可以存在多个Handler往MessageQueue中添加数据（发消息时各个Handler可能处于不同线程），那它内部是如何保证线程安全的？</li>
+<li>7.我们使用Message时应该如何创建它？</li>
+<li>8.Looper死循环为什么不会导致应用卡死？</li>
+</ul>
+<hr>
+<p>首先了解Handle是用于线程间通讯的，是整个App中的通信框架。</p>
+<p>最常用的sendMessage的流程<br>
+handle.sendMessage() -&gt;messageQueue.enqueueMessage<br>
+looper.loop()-&gt;messageQueue.next()-&gt;handler.dispatchMessage()-&gt;handle.handleMessage()<br>
+其中会涉及到类包括MessageQueue和Looper。</p>
+<h2 id="1android启动主线程中的handler">1.Android启动主线程中的Handler</h2>
+<p>Handle发送消息到MessageQueue中，然后Looper进行一个死循环来从MessageQueue中取消息，特别是我们在子线程中使用Handle时，我们要自己去启动Looper，不然Handle根本不起作用。但是在Android的主线程中我们并没有手动去启动looper，那么它是怎么来的？<br>
+来看一下Android程序的主入口，ActivityThread.main()-&gt;</p>
+<pre><code class="language-java"> public static void main(String[] args) {
+        //省略部分代码
+        //这里启动了Looper
+        Looper.prepareMainLooper();
+
+        // Find the value for {@link #PROC_START_SEQ_IDENT} if provided on the command line.
+        // It will be in the format &quot;seq=114&quot;
+        long startSeq = 0;
+        if (args != null) {
+            for (int i = args.length - 1; i &gt;= 0; --i) {
+                if (args[i] != null &amp;&amp; args[i].startsWith(PROC_START_SEQ_IDENT)) {
+                    startSeq = Long.parseLong(
+                            args[i].substring(PROC_START_SEQ_IDENT.length()));
+                }
+            }
+        }
+        ActivityThread thread = new ActivityThread();
+        thread.attach(false, startSeq);
+        
+        if (sMainThreadHandler == null) {
+            sMainThreadHandler = thread.getHandler();
+        }
+
+        if (false) {
+            Looper.myLooper().setMessageLogging(new
+                    LogPrinter(Log.DEBUG, &quot;ActivityThread&quot;));
+        }
+
+        // End of event ActivityThreadMain.
+        Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+        //Looper中是一个轮询操作
+        Looper.loop();
+        //执行到这里说明主线程中的Looper意外退出了，那么程序也就挂掉了
+        throw new RuntimeException(&quot;Main thread loop unexpectedly exited&quot;);
+    }
+</code></pre>
+<p>Looper中相关的方法分析：</p>
+<pre><code class="language-java">    /**
+    构建主线程的Looper和MessageQueue
+    */
+    @Deprecated
+    public static void prepareMainLooper() {
+        //这里就是构建了一个不允许退出的Looper并放到了sThreadLocal（ThreadLocal）中
+        prepare(false);
+        synchronized (Looper.class) {
+            if (sMainLooper != null) {
+                throw new IllegalStateException(&quot;The main Looper has already been prepared.&quot;);
+            }
+            //主线程的Looper
+            sMainLooper = myLooper();
+        }
+    }
+    /**
+    quitAllowed是否允许退出
+    */
+     private static void prepare(boolean quitAllowed) {
+        if (sThreadLocal.get() != null) {
+            throw new RuntimeException(&quot;Only one Looper may be created per thread&quot;);
+        }
+        sThreadLocal.set(new Looper(quitAllowed));
+    }
+
+    /**
+    looper的轮询操作
+    */
+    public static void loop() {
+        //获取当前线程的Looper
+        final Looper me = myLooper();
+        //如果为空的话，说明Looper还没有创建
+        if (me == null) {
+            throw new RuntimeException(&quot;No Looper; Looper.prepare() wasn't called on this thread.&quot;);
+        }
+        if (me.mInLoop) {
+            Slog.w(TAG, &quot;Loop again would have the queued messages be executed&quot;
+                    + &quot; before this one completed.&quot;);
+        }
+
+        me.mInLoop = true;
+
+        // 确保该线程的身份是本地进程的身份，并跟踪该身份令牌实际上是什么。
+        Binder.clearCallingIdentity();
+        final long ident = Binder.clearCallingIdentity();
+
+        // 允许使用系统道具覆盖阈值。例如adb shell 'setprop log.looper.1000.main.slow 1 &amp;&amp; 停止 &amp;&amp; 开始'
+        final int thresholdOverride =
+                SystemProperties.getInt(&quot;log.looper.&quot;
+                        + Process.myUid() + &quot;.&quot;
+                        + Thread.currentThread().getName()
+                        + &quot;.slow&quot;, 0);
+
+        me.mSlowDeliveryDetected = false;
+
+        for (;;) {
+            //在当前Looper的MessageQueue中取Message
+            if (!loopOnce(me, ident, thresholdOverride)) {
+                return;
+            }
+        }
+    }
+</code></pre>
+<h2 id="2主线程的handler都处理了什么">2.主线程的Handler都处理了什么？</h2>
+<pre><code class="language-java">public void handleMessage(Message msg) {
+            if (DEBUG_MESSAGES) Slog.v(TAG, &quot;&gt;&gt;&gt; handling: &quot; + codeToString(msg.what));
+            switch (msg.what) {
+                //这个应该是初始化应用信息的,handleBindApplication中有设置应用的TargetVersion，时间格式（12或者24）等
+                case BIND_APPLICATION:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;bindApplication&quot;);
+                    AppBindData data = (AppBindData)msg.obj;
+                    handleBindApplication(data);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //处理应用退出，可以看到主线程的Looper调用了quit停止了
+                case EXIT_APPLICATION:
+                    if (mInitialApplication != null) {
+                        mInitialApplication.onTerminate();
+                    }
+                    Looper.myLooper().quit();
+                    break;
+                    //这里应该是处理广播接受
+                case RECEIVER:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;broadcastReceiveComp&quot;);
+                    handleReceiver((ReceiverData)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //创建服务
+                case CREATE_SERVICE:
+                    if (Trace.isTagEnabled(Trace.TRACE_TAG_ACTIVITY_MANAGER)) {
+                        Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER,
+                                (&quot;serviceCreate: &quot; + String.valueOf(msg.obj)));
+                    }
+                    handleCreateService((CreateServiceData)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //绑定服务
+                case BIND_SERVICE:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;serviceBind&quot;);
+                    handleBindService((BindServiceData)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //解绑服务
+                case UNBIND_SERVICE:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;serviceUnbind&quot;);
+                    handleUnbindService((BindServiceData)msg.obj);
+                    schedulePurgeIdler();
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //应该是启动服务
+                case SERVICE_ARGS:
+                    if (Trace.isTagEnabled(Trace.TRACE_TAG_ACTIVITY_MANAGER)) {
+                        Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER,
+                                (&quot;serviceStart: &quot; + String.valueOf(msg.obj)));
+                    }
+                    handleServiceArgs((ServiceArgsData)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //停止服务
+                case STOP_SERVICE:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;serviceStop&quot;);
+                    handleStopService((IBinder)msg.obj);
+                    schedulePurgeIdler();
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //配置信息发生变化（主题等）
+                case CONFIGURATION_CHANGED:
+                    mConfigurationController.handleConfigurationChanged((Configuration) msg.obj);
+                    break;
+                    //移除上下文，看内部代码实现应该是注销广播的接受者和服务的Connection
+                case CLEAN_UP_CONTEXT:
+                    ContextCleanupInfo cci = (ContextCleanupInfo)msg.obj;
+                    cci.context.performFinalCleanup(cci.who, cci.what);
+                    break;
+                    //空闲时调用GC
+                case GC_WHEN_IDLE:
+                    scheduleGcIdler();
+                    break;
+                    //转储服务 -不清楚做什么
+                case DUMP_SERVICE:
+                    handleDumpService((DumpComponentInfo)msg.obj);
+                    break;
+                    //转储 GFXINFO -不清楚做什么
+                case DUMP_GFXINFO:
+                    handleDumpGfxInfo((DumpComponentInfo) msg.obj);
+                    break;
+                    //内存低
+                case LOW_MEMORY:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;lowMemory&quot;);
+                    handleLowMemory();
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //传感器？
+                case PROFILER_CONTROL:
+                    handleProfilerControl(msg.arg1 != 0, (ProfilerInfo)msg.obj, msg.arg2);
+                    break;
+                    //创建备份--应该就是activity中创建备份的地方
+                case CREATE_BACKUP_AGENT:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;backupCreateAgent&quot;);
+                    handleCreateBackupAgent((CreateBackupAgentData)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //销毁备份
+                case DESTROY_BACKUP_AGENT:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;backupDestroyAgent&quot;);
+                    handleDestroyBackupAgent((CreateBackupAgentData)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //自杀，杀进程
+                case SUICIDE:
+                    Process.killProcess(Process.myPid());
+                    break;
+                    //移除内容提供者
+                case REMOVE_PROVIDER:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;providerRemove&quot;);
+                    completeRemoveProvider((ProviderRefCount)msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //分发广播
+                case DISPATCH_PACKAGE_BROADCAST:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;broadcastPackage&quot;);
+                    handleDispatchPackageBroadcast(msg.arg1, (String[])msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //抛出远程服务异常
+                case SCHEDULE_CRASH:
+                    throwRemoteServiceException((String) msg.obj, msg.arg1);
+                    break;
+                    //处理转储堆
+                case DUMP_HEAP:
+                    handleDumpHeap((DumpHeapData) msg.obj);
+                    break;
+                    //将 Activity 的状态打印到给定的流中。 如果您运行“adb shell dumpsys activity &lt;activity_component_name&gt;”，则会调用它。
+                case DUMP_ACTIVITY:
+                    handleDumpActivity((DumpComponentInfo)msg.obj);
+                    break;
+                    //将提供者的状态打印到给定的流中。 如果您运行“adb shell dumpsys activity provider &lt;provider_component_name&gt;”，则会调用此方法。
+                case DUMP_PROVIDER:
+                    handleDumpProvider((DumpComponentInfo)msg.obj);
+                    break;
+                    //核心设置（？）更改后，重启所有的Activity
+                case SET_CORE_SETTINGS:
+                    Trace.traceBegin(Trace.TRACE_TAG_ACTIVITY_MANAGER, &quot;setCoreSettings&quot;);
+                    handleSetCoreSettings((Bundle) msg.obj);
+                    Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
+                    break;
+                    //处理更新包兼容性信息
+                case UPDATE_PACKAGE_COMPATIBILITY_INFO:
+                    handleUpdatePackageCompatibilityInfo((UpdateCompatibilityData)msg.obj);
+                    break;
+                    //内容提供者销毁时？
+                case UNSTABLE_PROVIDER_DIED:
+                    handleUnstableProviderDied((IBinder)msg.obj, false);
+                    break;
+                    //处理请求协助上下文附加
+                case REQUEST_ASSIST_CONTEXT_EXTRAS:
+                    handleRequestAssistContextExtras((RequestAssistContextExtras)msg.obj);
+                    break;
+                    //半透明转换完成
+                case TRANSLUCENT_CONVERSION_COMPLETE:
+                    handleTranslucentConversionComplete((IBinder)msg.obj, msg.arg1 == 1);
+                    break;
+                    //处理安装提供程序
+                case INSTALL_PROVIDER:
+                    handleInstallProvider((ProviderInfo) msg.obj);
+                    break;
+                    //一个新的Activity选项？
+                case ON_NEW_ACTIVITY_OPTIONS:
+                    Pair&lt;IBinder, ActivityOptions&gt; pair = (Pair&lt;IBinder, ActivityOptions&gt;) msg.obj;
+                    onNewActivityOptions(pair.first, pair.second);
+                    break;
+                    //进入动画完成
+                case ENTER_ANIMATION_COMPLETE:
+                    handleEnterAnimationComplete((IBinder) msg.obj);
+                    break;
+                    //启用 Binder IPC 跟踪。
+                case START_BINDER_TRACKING:
+                    handleStartBinderTracking();
+                    break;
+                    //应该就是停止Binder并销毁
+                case STOP_BINDER_TRACKING_AND_DUMP:
+                    handleStopBinderTrackingAndDump((ParcelFileDescriptor) msg.obj);
+                    break;
+                    //本地语音交互开始
+                case LOCAL_VOICE_INTERACTION_STARTED:
+                    handleLocalVoiceInteractionStarted((IBinder) ((SomeArgs) msg.obj).arg1,
+                            (IVoiceInteractor) ((SomeArgs) msg.obj).arg2);
+                    break;
+                    //附加代理
+                case ATTACH_AGENT: {
+                    Application app = getApplication();
+                    handleAttachAgent((String) msg.obj, app != null ? app.mLoadedApk : null);
+                    break;
+                }
+                /**
+                包安装触发的更新通过包更新接收器。在这里，我们尝试捕获由其他来源（例如覆盖）引起的 ApplicationInfo 更改。这意味着我们希望对代码更改尽可能保守。获取旧 ApplicationInfo 和新 ApplicationInfo 的差异，看看是否需要更改任何内容。
+                */
+                case APPLICATION_INFO_CHANGED:
+                    handleApplicationInfoChanged((ApplicationInfo) msg.obj);
+                    break;
+                    //运行隔离入口点
+                case RUN_ISOLATED_ENTRY_POINT:
+                    handleRunIsolatedEntryPoint((String) ((SomeArgs) msg.obj).arg1,
+                            (String[]) ((SomeArgs) msg.obj).arg2);
+                    break;
+                    //这里是12中对之前生命周期的一个统一入口，改为状态模式
+                case EXECUTE_TRANSACTION:
+                    final ClientTransaction transaction = (ClientTransaction) msg.obj;
+                    mTransactionExecutor.execute(transaction);
+                    if (isSystem()) {
+                        // Client transactions inside system process are recycled on the client side
+                        // instead of ClientLifecycleManager to avoid being cleared before this
+                        // message is handled.
+                        transaction.recycle();
+                    }
+                    // TODO(lifecycler): Recycle locally scheduled transactions.
+                    break;
+                    //重新启动Activity，活动状态必须在 [ON_START..ON_STOP] 才能重新启动
+                case RELAUNCH_ACTIVITY:
+                    handleRelaunchActivityLocally((IBinder) msg.obj);
+                    break;
+                    //清除资源
+                case PURGE_RESOURCES:
+                    schedulePurgeIdler();
+                    break;
+                    //附加启动参数
+                case ATTACH_STARTUP_AGENTS:
+                    handleAttachStartupAgents((String) msg.obj);
+                    break;
+                    //更新UI状态
+                case UPDATE_UI_TRANSLATION_STATE:
+                    final SomeArgs args = (SomeArgs) msg.obj;
+                    updateUiTranslationState((IBinder) args.arg1, (int) args.arg2,
+                            (TranslationSpec) args.arg3, (TranslationSpec) args.arg4,
+                            (List&lt;AutofillId&gt;) args.arg5, (UiTranslationSpec) args.arg6);
+                    break;
+                    //这里应该是对应内容提供者的，内容收集者
+                case SET_CONTENT_CAPTURE_OPTIONS_CALLBACK:
+                    handleSetContentCaptureOptionsCallback((String) msg.obj);
+                    break;
+                    /**
+                    在检测启动时调用，在加载任何应用程序代码之前。 通常这将被实现为简单地调用start来start检测线程，然后在onStart继续执行。
+如果您不需要自己的线程——也就是说，您正在编写完全异步的检测（返回到事件循环以便应用程序可以运行），您可以简单地在此处开始检测，例如调用Context.startActivity开始适当的应用程序的第一个活动。
+                    */
+                case INSTRUMENT_WITHOUT_RESTART:
+                    handleInstrumentWithoutRestart((AppBindData) msg.obj);
+                    break;
+                    //销毁上面的检测对象
+                case FINISH_INSTRUMENTATION_WITHOUT_RESTART:
+                    handleFinishInstrumentationWithoutRestart();
+                    break;
+            }
+            Object obj = msg.obj;
+            if (obj instanceof SomeArgs) {
+                ((SomeArgs) obj).recycle();
+            }
+            if (DEBUG_MESSAGES) Slog.v(TAG, &quot;&lt;&lt;&lt; done: &quot; + codeToString(msg.what));
+        }
+</code></pre>
+<p>可以看到和四大组件（Activity，Service，Broadcast，ContentProvider）相关的都有,还有应用信息的设置，启动和关闭应用，UI的更新</p>
+<h2 id="3handler的消息发送">3.Handler的消息发送</h2>
+<p>最常使用的sendMessage：</p>
+<pre><code class="language-java"> public final boolean sendMessage(@NonNull Message msg) {
+        return sendMessageDelayed(msg, 0);
+}
+
+public final boolean sendMessageDelayed(@NonNull Message msg, long delayMillis) {
+     if (delayMillis &lt; 0) {
+        delayMillis = 0;
+    }
+     return sendMessageAtTime(msg, SystemClock.uptimeMillis() + delayMillis);
+}
+
+ public boolean sendMessageAtTime(@NonNull Message msg, long uptimeMillis) {
+     //消息队列
+    MessageQueue queue = mQueue;
+    if (queue == null) {
+        RuntimeException e = new RuntimeException(
+                this + &quot; sendMessageAtTime() called with no mQueue&quot;);
+         Log.w(&quot;Looper&quot;, e.getMessage(), e);
+         return false;
+    }
+     return enqueueMessage(queue, msg, uptimeMillis);
+ }
+
+private boolean enqueueMessage(@NonNull MessageQueue queue, @NonNull Message msg,
+            long uptimeMillis) {
+    //消息这里也就和Handler进行的绑定，所以这里也就是为什么Handler会有内存溢出的问题
+    //handler的处理一般都是作为内部类去使用，但是当handler持有外部类的引用时，而消息需要等待的时间比较长，
+    //例如20分钟，但是当前的Activity已经退出要销毁，根据GC的可达性分析，Message持有Handler，
+    //Handler又持有Activity的引用，所以这里GC就无法进行回收，从而发生异常。内存溢出很大的可能
+    //都是因为生命周期不一致引起的。
+    msg.target = this;
+    msg.workSourceUid = ThreadLocalWorkSource.getUid();
+
+    if (mAsynchronous) {
+        msg.setAsynchronous(true);
+    }
+    //见MessageQueue的方法分析
+     return queue.enqueueMessage(msg, uptimeMillis);
+}
+</code></pre>
+<p>MessageQueue相关方法分析：</p>
+<pre><code class="language-java">boolean enqueueMessage(Message msg, long when) {
+    //msg的target就是handler，如果没有那么这就没有消费者了
+        if (msg.target == null) {
+            throw new IllegalArgumentException(&quot;Message must have a target.&quot;);
+        }
+        //加锁保证在同一时刻只有一个插入消息队列的操作，并且没有其他的操作（取消息和消息退出）
+        synchronized (this) {
+            if (msg.isInUse()) {
+                throw new IllegalStateException(msg + &quot; This message is already in use.&quot;);
+            }
+            //Looper退出时会调用MessageQueue的quit设置mQuitting为true
+            if (mQuitting) {
+                IllegalStateException e = new IllegalStateException(
+                        msg.target + &quot; sending message to a Handler on a dead thread&quot;);
+                Log.w(TAG, e.getMessage(), e);
+                msg.recycle();
+                return false;
+            }
+
+            msg.markInUse();
+            msg.when = when;
+            Message p = mMessages;
+            boolean needWake;
+            if (p == null || when == 0 || when &lt; p.when) {
+                // New head, wake up the event queue if blocked.
+                msg.next = p;
+                mMessages = msg;
+                needWake = mBlocked;
+            } else {
+                // 插入队列中间。通常我们不必唤醒事件队列，除非队列的头部有一个barrier（同步屏障），并且该消息是队列中最早的异步消息。
+                needWake = mBlocked &amp;&amp; p.target == null &amp;&amp; msg.isAsynchronous();
+                Message prev;
+                for (;;) {
+                    prev = p;
+                    p = p.next;
+                    if (p == null || when &lt; p.when) {
+                        break;
+                    }
+                    if (needWake &amp;&amp; p.isAsynchronous()) {
+                        needWake = false;
+                    }
+                }
+                msg.next = p; // invariant: p == prev.next
+                prev.next = msg;
+            }
+
+            // We can assume mPtr != 0 because mQuitting is false.
+            //在这里如果当前的Looper是需要唤醒的，这里会执行
+            if (needWake) {
+                nativeWake(mPtr);
+            }
+        }
+        return true;
+    }
+</code></pre>
+<p>到这里Message已经到放入到MessageQueue中了，那么又是如何把消息取出来的并回掉给Handler中的handleMessage(Message msg)方法的呢？</p>
+<h2 id="4handlehandlemessage的回调">4.Handle.handleMessage()的回调</h2>
+<p>前面我们已经看到，Handler需要在必须在Looper的环境中</p>
+<pre><code class="language-java">public static void loop() {
+        final Looper me = myLooper();
+        //判断是否还没有启动Looper
+        if (me == null) {
+            throw new RuntimeException(&quot;No Looper; Looper.prepare() wasn't called on this thread.&quot;);
+        }
+        //判断是否重复启动Looper
+        if (me.mInLoop) {
+            Slog.w(TAG, &quot;Loop again would have the queued messages be executed&quot;
+                    + &quot; before this one completed.&quot;);
+        }
+
+        me.mInLoop = true;
+
+        // Make sure the identity of this thread is that of the local process,
+        // and keep track of what that identity token actually is.
+        Binder.clearCallingIdentity();
+        final long ident = Binder.clearCallingIdentity();
+
+        // Allow overriding a threshold with a system prop. e.g.
+        // adb shell 'setprop log.looper.1000.main.slow 1 &amp;&amp; stop &amp;&amp; start'
+        final int thresholdOverride =
+                SystemProperties.getInt(&quot;log.looper.&quot;
+                        + Process.myUid() + &quot;.&quot;
+                        + Thread.currentThread().getName()
+                        + &quot;.slow&quot;, 0);
+
+        me.mSlowDeliveryDetected = false;
+        //轮询获取MessageQueue中的message
+        for (;;) {
+            if (!loopOnce(me, ident, thresholdOverride)) {
+                return;
+            }
+        }
+    }
+
+    private static boolean loopOnce(final Looper me,
+            final long ident, final int thresholdOverride) {
+        Message msg = me.mQueue.next(); // might block
+        if (msg == null) {
+            //没有消息表示消息队列正在退出。
+            return false;
+        }
+
+        // This must be in a local variable, in case a UI event sets the logger
+        final Printer logging = me.mLogging;
+        if (logging != null) {
+            logging.println(&quot;&gt;&gt;&gt;&gt;&gt; Dispatching to &quot; + msg.target + &quot; &quot;
+                    + msg.callback + &quot;: &quot; + msg.what);
+        }
+        // Make sure the observer won't change while processing a transaction.
+        final Observer observer = sObserver;
+
+        final long traceTag = me.mTraceTag;
+        long slowDispatchThresholdMs = me.mSlowDispatchThresholdMs;
+        long slowDeliveryThresholdMs = me.mSlowDeliveryThresholdMs;
+        if (thresholdOverride &gt; 0) {
+            slowDispatchThresholdMs = thresholdOverride;
+            slowDeliveryThresholdMs = thresholdOverride;
+        }
+        final boolean logSlowDelivery = (slowDeliveryThresholdMs &gt; 0) &amp;&amp; (msg.when &gt; 0);
+        final boolean logSlowDispatch = (slowDispatchThresholdMs &gt; 0);
+
+        final boolean needStartTime = logSlowDelivery || logSlowDispatch;
+        final boolean needEndTime = logSlowDispatch;
+
+        if (traceTag != 0 &amp;&amp; Trace.isTagEnabled(traceTag)) {
+            Trace.traceBegin(traceTag, msg.target.getTraceName(msg));
+        }
+
+        final long dispatchStart = needStartTime ? SystemClock.uptimeMillis() : 0;
+        final long dispatchEnd;
+        Object token = null;
+        if (observer != null) {
+            token = observer.messageDispatchStarting();
+        }
+        long origWorkSource = ThreadLocalWorkSource.setUid(msg.workSourceUid);
+        try {
+            //这里的target就是Handler，处理消息的分发
+            msg.target.dispatchMessage(msg);
+            if (observer != null) {
+                observer.messageDispatched(token, msg);
+            }
+            dispatchEnd = needEndTime ? SystemClock.uptimeMillis() : 0;
+        } catch (Exception exception) {
+            if (observer != null) {
+                observer.dispatchingThrewException(token, msg, exception);
+            }
+            throw exception;
+        } finally {
+            ThreadLocalWorkSource.restore(origWorkSource);
+            if (traceTag != 0) {
+                Trace.traceEnd(traceTag);
+            }
+        }
+        if (logSlowDelivery) {
+            if (me.mSlowDeliveryDetected) {
+                if ((dispatchStart - msg.when) &lt;= 10) {
+                    Slog.w(TAG, &quot;Drained&quot;);
+                    me.mSlowDeliveryDetected = false;
+                }
+            } else {
+                if (showSlowLog(slowDeliveryThresholdMs, msg.when, dispatchStart, &quot;delivery&quot;,
+                        msg)) {
+                    // Once we write a slow delivery log, suppress until the queue drains.
+                    me.mSlowDeliveryDetected = true;
+                }
+            }
+        }
+        if (logSlowDispatch) {
+            showSlowLog(slowDispatchThresholdMs, dispatchStart, dispatchEnd, &quot;dispatch&quot;, msg);
+        }
+
+        if (logging != null) {
+            logging.println(&quot;&lt;&lt;&lt;&lt;&lt; Finished to &quot; + msg.target + &quot; &quot; + msg.callback);
+        }
+
+        // Make sure that during the course of dispatching the
+        // identity of the thread wasn't corrupted.
+        final long newIdent = Binder.clearCallingIdentity();
+        if (ident != newIdent) {
+            Log.wtf(TAG, &quot;Thread identity changed from 0x&quot;
+                    + Long.toHexString(ident) + &quot; to 0x&quot;
+                    + Long.toHexString(newIdent) + &quot; while dispatching to &quot;
+                    + msg.target.getClass().getName() + &quot; &quot;
+                    + msg.callback + &quot; what=&quot; + msg.what);
+        }
+        //消息回收
+        msg.recycleUnchecked();
+
+        return true;
+    }
+</code></pre>
+<p>这里我们首先要看一下MessageQueue中的next怎么获取消息的</p>
+<pre><code class="language-java">Message next() {
+        //如果消息循环已经退出并被处理，则返回此处。如果应用程序在退出后尝试重新启动不受支持的 Looper，就会发生这种情况。
+        final long ptr = mPtr;
+        if (ptr == 0) {
+            return null;
+        }
+
+        int pendingIdleHandlerCount = -1; // -1 only during first iteration
+        int nextPollTimeoutMillis = 0;
+        for (;;) {
+            if (nextPollTimeoutMillis != 0) {
+                Binder.flushPendingCommands();
+            }
+
+            nativePollOnce(ptr, nextPollTimeoutMillis);
+
+            synchronized (this) {
+                // Try to retrieve the next message.  Return if found.
+                final long now = SystemClock.uptimeMillis();
+                Message prevMsg = null;
+                Message msg = mMessages;
+                //查找同步屏障的消息
+                if (msg != null &amp;&amp; msg.target == null) {
+                    // Stalled by a barrier.  Find the next asynchronous message in the queue.
+                    do {
+                        prevMsg = msg;
+                        msg = msg.next;
+                    } while (msg != null &amp;&amp; !msg.isAsynchronous());
+                }
+                if (msg != null) {
+                    if (now &lt; msg.when) {
+                        //下一条消息未准备好。设置超时以在准备好时唤醒。
+                        nextPollTimeoutMillis = (int) Math.min(msg.when - now, Integer.MAX_VALUE);
+                    } else {
+                        // Got a message.
+                        mBlocked = false;
+                        if (prevMsg != null) {
+                            prevMsg.next = msg.next;
+                        } else {
+                            mMessages = msg.next;
+                        }
+                        msg.next = null;
+                        if (DEBUG) Log.v(TAG, &quot;Returning message: &quot; + msg);
+                        msg.markInUse();
+                        //这里返回当前需要处理的消息
+                        return msg;
+                    }
+                } else {
+                    // No more messages.
+                    nextPollTimeoutMillis = -1;
+                }
+
+                //现在处理退出消息，所有挂起的消息都已处理完毕。
+                if (mQuitting) {
+                    dispose();
+                    return null;
+                }
+
+                // 如果第一次空闲，则获取要运行的空闲程序的数量。空闲句柄仅在队列为空或队列中的第一条消息（可能是障碍）将在未来处理时运行。
+                if (pendingIdleHandlerCount &lt; 0
+                        &amp;&amp; (mMessages == null || now &lt; mMessages.when)) {
+                    pendingIdleHandlerCount = mIdleHandlers.size();
+                }
+                if (pendingIdleHandlerCount &lt;= 0) {
+                    // No idle handlers to run.  Loop and wait some more.
+                    mBlocked = true;
+                    continue;
+                }
+
+                if (mPendingIdleHandlers == null) {
+                    mPendingIdleHandlers = new IdleHandler[Math.max(pendingIdleHandlerCount, 4)];
+                }
+                mPendingIdleHandlers = mIdleHandlers.toArray(mPendingIdleHandlers);
+            }
+
+            // Run the idle handlers.
+            // We only ever reach this code block during the first iteration.
+            for (int i = 0; i &lt; pendingIdleHandlerCount; i++) {
+                final IdleHandler idler = mPendingIdleHandlers[i];
+                mPendingIdleHandlers[i] = null; // release the reference to the handler
+
+                boolean keep = false;
+                try {
+                    keep = idler.queueIdle();
+                } catch (Throwable t) {
+                    Log.wtf(TAG, &quot;IdleHandler threw exception&quot;, t);
+                }
+
+                if (!keep) {
+                    synchronized (this) {
+                        mIdleHandlers.remove(idler);
+                    }
+                }
+            }
+
+            // Reset the idle handler count to 0 so we do not run them again.
+            pendingIdleHandlerCount = 0;
+
+            // While calling an idle handler, a new message could have been delivered
+            // so go back and look again for a pending message without waiting.
+            nextPollTimeoutMillis = 0;
+        }
+    }
+</code></pre>
+<p>在获取到消息之后，在Looper中的loopOnce方法里 msg.target.dispatchMessage(msg);，其中Message的Target就是Handler</p>
+<pre><code class="language-java">  public void dispatchMessage(@NonNull Message msg) {
+        if (msg.callback != null) {
+            handleCallback(msg);
+        } else {
+            if (mCallback != null) {
+                if (mCallback.handleMessage(msg)) {
+                    return;
+                }
+            }
+            //handleMessage被调用了
+            handleMessage(msg);
+        }
+    }
+</code></pre>
+<p>到这一步整个流程串起来了，但是有两个问题</p>
+<ul>
+<li>1.当消息队列没有消息的时候，Looper是处于什么样的状态，因为它是一个循环操作，会阻塞线程？</li>
+<li>2.当队列中第一个消息的触发时间还没到的话，又是怎么处理的？<br>
+这个两个问题我们都可以从MessageQueue中的next()方法中找到答案：</li>
+</ul>
+<pre><code class="language-java"> Message next() {
+        // Return here if the message loop has already quit and been disposed.
+        // This can happen if the application tries to restart a looper after quit
+        // which is not supported.
+        final long ptr = mPtr;
+        if (ptr == 0) {
+            return null;
+        }
+
+        int pendingIdleHandlerCount = -1; // -1 only during first iteration
+        int nextPollTimeoutMillis = 0;
+        for (;;) {
+            if (nextPollTimeoutMillis != 0) {
+                Binder.flushPendingCommands();
+            }
+            //nextPollTimeoutMillis就是下一个任务需要等待执行的时间，如果nextPollTimeoutMillis为-1，那么这个Looper会一直休眠等待下去，所以子线程中的Looper没有消息要处理了要及时调用quite
+            nativePollOnce(ptr, nextPollTimeoutMillis);
+
+            synchronized (this) {
+                // Try to retrieve the next message.  Return if found.
+                final long now = SystemClock.uptimeMillis();
+                Message prevMsg = null;
+                Message msg = mMessages;
+                if (msg != null &amp;&amp; msg.target == null) {
+                    // Stalled by a barrier.  Find the next asynchronous message in the queue.
+                    do {
+                        prevMsg = msg;
+                        msg = msg.next;
+                    } while (msg != null &amp;&amp; !msg.isAsynchronous());
+                }
+                if (msg != null) {
+                    if (now &lt; msg.when) {
+                        //获取到的消息没有到执行的时间，获取一个执行时间差
+                        nextPollTimeoutMillis = (int) Math.min(msg.when - now, Integer.MAX_VALUE);
+                    } else {
+                        // Got a message.
+                        mBlocked = false;
+                        if (prevMsg != null) {
+                            prevMsg.next = msg.next;
+                        } else {
+                            mMessages = msg.next;
+                        }
+                        msg.next = null;
+                        if (DEBUG) Log.v(TAG, &quot;Returning message: &quot; + msg);
+                        msg.markInUse();
+                        return msg;
+                    }
+                } else {
+                    //这里就是消息队列中没有消息了
+                    nextPollTimeoutMillis = -1;
+                }
+
+                // 只有调用quite之后mQuitting才为true
+                if (mQuitting) {
+                    dispose();
+                    return null;
+                }
+
+                // If first time idle, then get the number of idlers to run.
+                // Idle handles only run if the queue is empty or if the first message
+                // in the queue (possibly a barrier) is due to be handled in the future.
+                if (pendingIdleHandlerCount &lt; 0
+                        &amp;&amp; (mMessages == null || now &lt; mMessages.when)) {
+                    pendingIdleHandlerCount = mIdleHandlers.size();
+                }
+                //在这里跳到下一个循环，looper就开始等待了
+                if (pendingIdleHandlerCount &lt;= 0) {
+                    // No idle handlers to run.  Loop and wait some more.
+                    mBlocked = true;
+                    continue;
+                }
+
+                if (mPendingIdleHandlers == null) {
+                    mPendingIdleHandlers = new IdleHandler[Math.max(pendingIdleHandlerCount, 4)];
+                }
+                mPendingIdleHandlers = mIdleHandlers.toArray(mPendingIdleHandlers);
+            }
+
+            // Run the idle handlers.
+            // We only ever reach this code block during the first iteration.
+            for (int i = 0; i &lt; pendingIdleHandlerCount; i++) {
+                final IdleHandler idler = mPendingIdleHandlers[i];
+                mPendingIdleHandlers[i] = null; // release the reference to the handler
+
+                boolean keep = false;
+                try {
+                    keep = idler.queueIdle();
+                } catch (Throwable t) {
+                    Log.wtf(TAG, &quot;IdleHandler threw exception&quot;, t);
+                }
+
+                if (!keep) {
+                    synchronized (this) {
+                        mIdleHandlers.remove(idler);
+                    }
+                }
+            }
+
+            // Reset the idle handler count to 0 so we do not run them again.
+            pendingIdleHandlerCount = 0;
+
+            // While calling an idle handler, a new message could have been delivered
+            // so go back and look again for a pending message without waiting.
+            nextPollTimeoutMillis = 0;
+        }
+    }
+</code></pre>
+<p>到这里我们也就是可以知道为什么Handler能够把我们在子线程发的消息转换到主线程来了，handler线程间通信是通过共享内存实现的，内存是不分线程的，但是函数是有线程区分的，当我们在子线程通过handler.sendMessage(msg)-》MessageQueue.equeueMessage(msg)这个就是子线程操作并在MessageQueue管理的内存空间中写入一个对象数据<br>
+而在主线程中的Looper不断的轮询消息队列的方法loop是执行在主线程的，它不断的在主线程中从MessageQueue中拿消息，这样就完成了线程切换。</p>
+<h2 id="5那么在looper是如何保证在线程的唯一性">5.那么在Looper是如何保证在线程的唯一性？</h2>
+<p>ThreadLocal 可以进行线程数据隔离，每个线程都有单独的一个副本<br>
+每个线程都只会有一个Looper，它就是通过ThreadLocal来进行实现的</p>
+<p>Looper相关的源码：</p>
+<pre><code class="language-java">public final class Looper {
+    //ThreadLocal只有有一个，并且Looper的构造方法私有化，那么只能通过prepare()方法来进行调用
+   static final ThreadLocal&lt;Looper&gt; sThreadLocal = new ThreadLocal&lt;Looper&gt;();
+    /**
+    将当前线程初始化为循环程序。 这使您有机会创建处理程序，然后在实际开始循环之前引用此循环程序。 调用此方法后一定要调用loop() ，并通过调用quit()结束它。
+    */
+    public static void prepare() {
+        prepare(true);
+    }
+
+    private static void prepare(boolean quitAllowed) {
+        //首先检查当前是否已经有Looper，有那么就抛出异常，从而保证了一个线程只有一个Looper
+        if (sThreadLocal.get() != null) {
+            throw new RuntimeException(&quot;Only one Looper may be created per thread&quot;);
+        }
+        sThreadLocal.set(new Looper(quitAllowed));
+    }
+
+ private Looper(boolean quitAllowed) {
+        mQueue = new MessageQueue(quitAllowed);
+        mThread = Thread.currentThread();
+    }
+}
+</code></pre>
+<p>ThreadLocal:</p>
+<pre><code class="language-java">/**
+将此线程局部变量的当前线程副本设置为指定值。 大多数子类将不需要覆盖此方法，仅依赖于initialValue方法来设置线程initialValue的值。
+参数：
+value -- 要存储在此线程本地的当前线程副本中的值。
+*/
+    public void set(T value) {
+        //获取当前线程
+        Thread t = Thread.currentThread();
+        //通过线程获取ThreadLocalMap
+        ThreadLocalMap map = getMap(t);
+        if (map != null)
+            map.set(this, value);
+        else
+            createMap(t, value);
+    }
+</code></pre>
+<h2 id="6同步屏障">6.同步屏障</h2>
+<p>在Android中Handler的同步屏障实现方式，是在需要的地方往消息队列中插入一条target为null的Message，根据前面的源码分析可以看到正常的消息的target就是要处理消息的Handler，在MessageQueue的next方法中，会判断当前消息。<br>
+同步屏障消息的触发：</p>
+<pre><code class="language-java">/**
+向循环程序的消息队列发送一个同步障碍。在消息队列遇到已发布的同步障碍之前，消息处理照常进行。
+当遇到barrier时，队列中稍后的同步消息将被暂停(阻止执行)，直到barrier通过调用removeSyncBarrier并指定标识同步barrier的令牌被释放。
+此方法用于立即推迟所有随后发布的同步消息的执行，直到满足释放barrier的条件。
+异步消息(请参见消息。isAsynchronous不受此障碍的限制，并照常进行处理。
+该调用必须始终与removeSyncBarrier调用匹配，以确保消息队列恢复正常操作。
+否则，应用程序可能会挂起! 
+*/
+ public int postSyncBarrier() {
+        return postSyncBarrier(SystemClock.uptimeMillis());
+    }
+
+    private int postSyncBarrier(long when) {
+        // 加入一个新的同步障碍令牌。
+        //我们不需要唤醒队列，因为屏障的目的是让它停滞。
+        synchronized (this) {
+            final int token = mNextBarrierToken++;
+            //创建一个target为null的Message
+            final Message msg = Message.obtain();
+            msg.markInUse();
+            msg.when = when;
+            msg.arg1 = token;
+
+            Message prev = null;
+            Message p = mMessages;
+            if (when != 0) {
+                while (p != null &amp;&amp; p.when &lt;= when) {
+                    prev = p;
+                    p = p.next;
+                }
+            }
+            if (prev != null) { // invariant: p == prev.next
+                msg.next = p;
+                prev.next = msg;
+            } else {
+                msg.next = p;
+                mMessages = msg;
+            }
+            return token;
+        }
+    }
+</code></pre>
+<p>同步屏障释放：</p>
+<pre><code class="language-java"> public void removeSyncBarrier(int token) {
+        //从队列中删除同步障碍令牌。
+        //如果队列不再被障碍物阻碍，那么唤醒它。
+        synchronized (this) {
+            Message prev = null;
+            Message p = mMessages;
+            while (p != null &amp;&amp; (p.target != null || p.arg1 != token)) {
+                prev = p;
+                p = p.next;
+            }
+            if (p == null) {
+                throw new IllegalStateException(&quot;The specified message queue synchronization &quot;
+                        + &quot; barrier token has not been posted or has already been removed.&quot;);
+            }
+            final boolean needWake;
+            if (prev != null) {
+                prev.next = p.next;
+                needWake = false;
+            } else {
+                mMessages = p.next;
+                needWake = mMessages == null || mMessages.target != null;
+            }
+            p.recycleUnchecked();
+
+            //如果循环退出，那么它已经醒了。
+            //当mquit为false时，我们可以假设mPtr != 0。
+            if (needWake &amp;&amp; !mQuitting) {
+                nativeWake(mPtr);
+            }
+        }
+    }
+</code></pre>
+<p>同步屏障在消息队列中的处理，当获取到同步屏障消息后这个消息会一直在，当下次循环的时候，我们获得还是同步屏障的消息，然后继续查找异步的消息进行处理，直到调用移除同步屏障消息：</p>
+<pre><code class="language-java">//被障碍阻碍了。在队列中查找下一个异步消息。
+ if (msg != null &amp;&amp; msg.target == null) {
+                    // Stalled by a barrier.  Find the next asynchronous message in the queue.
+                    do {
+                        prevMsg = msg;
+                        msg = msg.next;
+                    } while (msg != null &amp;&amp; !msg.isAsynchronous());
+                }
+</code></pre>
+<p>应用场景，最常见的就是屏幕刷新，屏幕刷新必然是要实时响应的，队列中这时候其他消息都要先被同步屏障挡掉，处理界面刷新的异步消息。<br>
+在ViewRootImpl中的scheduleTraversals()</p>
+<pre><code class="language-java">    void scheduleTraversals() {
+        if (!mTraversalScheduled) {
+            mTraversalScheduled = true;
+            //先发送了同步屏障消息
+            mTraversalBarrier = mHandler.getLooper().getQueue().postSyncBarrier();
+            //视图
+            mChoreographer.postCallback(
+                    Choreographer.CALLBACK_TRAVERSAL, mTraversalRunnable, null);
+            if (!mUnbufferedInputDispatch) {
+                scheduleConsumeBatchedInput();
+            }
+            notifyRendererOfFramePending();
+            pokeDrawLockIfNeeded();
+        }
+    }
+
+   void doTraversal() {
+        if (mTraversalScheduled) {
+            mTraversalScheduled = false;
+            //移除同步屏障
+            mHandler.getLooper().getQueue().removeSyncBarrier(mTraversalBarrier);
+
+            if (mProfile) {
+                Debug.startMethodTracing(&quot;ViewAncestor&quot;);
+            }
+            //循环包括performMeasure,performLayout,performDraw
+            performTraversals();
+
+            if (mProfile) {
+                Debug.stopMethodTracing();
+                mProfile = false;
+            }
+        }
+    }
+</code></pre>
+<h2 id="7面试问题回答">7.面试问题回答</h2>
+<ul>
+<li>1.一个线程有几个Handler？<br>
+任意个，handler是new出来的</li>
+<li>2.一个线程有几个looper，如何保证的？<br>
+只有一个，保障机制Looper的构建和ThreadLocal一起</li>
+<li>3.Handler内存泄漏原因？为什么其他的内部类没有说过这个问题？<br>
+内存泄漏发送主要就是因为生命周期不一致的问题，Handler中容易持有外部类的引用，并且Message又会持有Handler，当Message没有回收时，根据可达性分析，这一系列的对象都无法被回收，也就发生内存泄漏了。</li>
+<li>4.为何主线程可以new Handler？如果想要在子线程中new handler要做什么准备<br>
+在主线程中一创建就构建好了Looper了，但是子线程中没有，所有需要调用Looper.prepare()构建Looper，调用Looper.loop()启动Looper</li>
+<li>5.子线程中维护的Looper，消息队列无消息的时候处理方案是什么？有什么用？<br>
+需要调用quit()方法来退出MessageQueue的循环，返回一个为null的Message</li>
+<li>6.既然可以存在多个Handler往MessageQueue中添加数据（发消息时各个Handler可能处于不同线程），那它内部是如何保证线程安全的？<br>
+通过synchronized关键字包裹代码块实现，一个线程中只会有一个MessageQueue，所以在通过synchronized（this）加锁的代码（加入队列，取出，退出）的操作，同一时间只能由一个线程可以执行。</li>
+<li>7.我们使用Message时应该如何创建它？<br>
+Message.obtain(),这是从消息的全量池中返回一个新的Message对象，避免分配新对象</li>
+<li>8.Looper死循环为什么不会导致应用卡死？<br>
+其实这是两个概念的消息，整个应用的处理就是建立在Handler机制上的，所有的事件（点击，页面刷新等）都是通过消息机制完成的。</li>
+<li>9.MessageQueue队列处理机制，在fragment生命周期管理中的应用<br>
+这个是要在事件场景去去看，例如Glide的依赖Fragment来提供对应生命周期的,在Glide中会提供一个SupportRequestMananagerFragment，一个无视图的Fragment用来安全存储RequestManager，可以用来启动、停止和管理针对Fragment或activity的目标发起的Glide请求。</li>
+</ul>
+<pre><code class="language-java">  final Map&lt;FragmentManager, SupportRequestManagerFragment&gt; pendingSupportRequestManagerFragments =
+      new HashMap&lt;&gt;();
+
+  @NonNull
+  private SupportRequestManagerFragment getSupportRequestManagerFragment(
+      @NonNull final FragmentManager fm, @Nullable Fragment parentHint, boolean isParentVisible) {
+          //先通过FragmentManager查找对应tag的SupportRequestManagerFragment
+    SupportRequestManagerFragment current =
+        (SupportRequestManagerFragment) fm.findFragmentByTag(FRAGMENT_TAG);
+    if (current == null) {
+        //在map中去查找对应的SupportRequestManagerFragment
+      current = pendingSupportRequestManagerFragments.get(fm);
+      if (current == null) {
+          //都为说明没有创建过
+        current = new SupportRequestManagerFragment();
+        current.setParentFragmentHint(parentHint);
+        if (isParentVisible) {
+          current.getGlideLifecycle().onStart();
+        }
+        //存入map中
+        pendingSupportRequestManagerFragments.put(fm, current);
+        //启动事物创建Fragment，内部通过handler发送消息
+        fm.beginTransaction().add(current, FRAGMENT_TAG).commitAllowingStateLoss();
+        //发送消息，这里的Handler创建的是主线程的Handler，和事物当中的在同一个线程中，那么
+        //它们的消息队列是同一个，也就是当这个消息执行的时候，那么Fragment必然已经被创建完成了，
+        //那么清除Map中的就没有问题了，避免了重复创建的问题。
+        handler.obtainMessage(ID_REMOVE_SUPPORT_FRAGMENT_MANAGER, fm).sendToTarget();
+      }
+    }
+    return current;
+  }
+
+    /**
+    RequestManagerRetriever中的handleMessage
+    */
+  @Override
+  public boolean handleMessage(Message message) {
+    boolean handled = true;
+    Object removed = null;
+    Object key = null;
+    switch (message.what) {
+      case ID_REMOVE_FRAGMENT_MANAGER:
+        android.app.FragmentManager fm = (android.app.FragmentManager) message.obj;
+        key = fm;
+        removed = pendingRequestManagerFragments.remove(fm);
+        break;
+      case ID_REMOVE_SUPPORT_FRAGMENT_MANAGER:
+        FragmentManager supportFm = (FragmentManager) message.obj;
+        key = supportFm;
+        //移除对应的Fragment
+        removed = pendingSupportRequestManagerFragments.remove(supportFm);
+        break;
+      default:
+        handled = false;
+        break;
+    }
+    if (handled &amp;&amp; removed == null &amp;&amp; Log.isLoggable(TAG, Log.WARN)) {
+      Log.w(TAG, &quot;Failed to remove expected request manager fragment, manager: &quot; + key);
+    }
+    return handled;
+  }
+
+</code></pre>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[Hilt的使用]]></title>
+        <id>https://arms-merchants.github.io/post/hilt-de-shi-yong/</id>
+        <link href="https://arms-merchants.github.io/post/hilt-de-shi-yong/">
+        </link>
+        <updated>2021-12-31T02:11:17.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="1什么是依赖注入">1.什么是依赖注入</h2>
+<p>在使用Hilt之前我们要先明白什么是依赖注入？<br>
+依赖注入，在说之前觉得是很高大上的东西，其实在开发中都会使用到只是有可能你只是没有明白其含义而已。</p>
+<pre><code class="language-java">A a = new A();
+</code></pre>
+<p>对象创建，这是我们开发中最常出现的东西，其实这就是依赖注入，不过这个是我们自己手动去进行依赖注入的，创建a这对象它是要依赖与A的这个class的。<br>
+而Hilt就是将这个过程进行自动化了，Hilt是Draggr2的一个专门为Android进行场景话定制的开源框架。</p>
+<h2 id="2hilt配置">2.Hilt配置</h2>
+<p>项目根目标的build.gradle.kts,这里是在kts里的写法，普通的gradle改写下格式就ok。</p>
+<pre><code class="language-java">classpath(&quot;com.google.dagger:hilt-android-gradle-plugin:2.40&quot;)
+</code></pre>
+<p>App的gradle配置</p>
+<pre><code class="language-java">plugins {
+    id(&quot;com.android.application&quot;)
+    kotlin(&quot;android&quot;)
+    id(&quot;kotlin-kapt&quot;)
+    id(&quot;dagger.hilt.android.plugin&quot;)
+}
+android{
+     //hilt的是使用是要求Java8的
+        compileOptions {
+        sourceCompatibility(JavaVersion.VERSION_1_8)
+        targetCompatibility(JavaVersion.VERSION_1_8)
+    }
+}
+
+dependencies {
+     //hilt
+    implementation(&quot;com.google.dagger:hilt-android:2.40&quot;)
+    kapt(&quot;com.google.dagger:hilt-android-compiler:2.40&quot;)
+    //在viewmodel上使用hilt
+    implementation (&quot;androidx.hilt:hilt-lifecycle-viewmodel:1.0.0-alpha03&quot;)
+    kapt (&quot;androidx.hilt:hilt-compiler:1.0.0-beta01&quot;)
+}
+</code></pre>
+<p>在Application上添加@HiltAndroidApp注解，所有使用Hilt的应用必须要包含一个带有当前注解的Application，这个地方会触发Hilt的代码操作，而且这个注解会相应的生成一个应用级别的依赖容器。</p>
+<pre><code class="language-java">@HiltAndroidApp
+class ExampleApplication : Application() { ... }
+</code></pre>
+<p>到现在整个的配置已经完成了，下面我们来看它的使用。</p>
+<h2 id="3基础使用">3.基础使用</h2>
+<p>我们使用依赖注入，说白了就是要提供一个对象给外部使用，而外部不需要了解具体的创建过程，但是我们需要明确告知Hilt那些是必要的依赖项。</p>
+<pre><code class="language-java">/**
+构造函数注入就是其中的一种方法
+*/
+class Car @Inject constructor() {
+    val id:String = &quot;123123&quot;
+    val name:String = &quot;1231232&quot;
+}
+/**
+模拟调用
+*/
+@AndroidEntryPoint
+class MainActivity :AppCompatActivity(){
+    @Inject lateinit var car: Car
+        override fun onCreate(savedInstanceState: Bundle?) {
+            car.id
+        }
+}
+</code></pre>
+<p>上面的例子就是最简单的使用Hilt的过程，给类的构造添加@Inject注解，在能够进行依赖注入的地方，添加@AndroidEntryPoint注解，使用@Inject来标示注入的对象。<br>
+Hilt支持的Android类包括：</p>
+<ul>
+<li>Application</li>
+<li>Activity  仅支持ComponentActivity</li>
+<li>Fragment 仅支持androidx.Fragment</li>
+<li>View</li>
+<li>Service</li>
+<li>BroadcastReceiver</li>
+</ul>
+<p>而且Hilt注入的字段不能为私有字段，并且在构建时，Hilt会为Android类生成Dagger组件。然后Dagger会进行代码检查，并执行以下步骤：</p>
+<ul>
+<li>1.构建并验证依赖关系，确保没有未满足的依赖依赖关系且没有依赖循环。</li>
+<li>2.生成它在运行时用来创建实际对象及其依赖项的类。</li>
+</ul>
+<p>修改上面的例子：</p>
+<pre><code class="language-java">class Engine @inject constructor(){}
+/**
+构造函数注入就是其中的一种方法
+*/
+class Car @Inject constructor(val engine:Engine) {
+    val id:String = &quot;123123&quot;
+    val name:String = &quot;1231232&quot;
+}
+/**
+模拟调用
+*/
+@AndroidEntryPoint
+class MainActivity :AppCompatActivity(){
+    @Inject lateinit var car: Car
+        override fun onCreate(savedInstanceState: Bundle?) {
+            car.id
+        }
+}
+</code></pre>
+<p>我们在创建Car的对象时需要一个Engine对象，那么我们必要也要提供Engine的依赖项。<br>
+上面的情况是针对有构造函数的对象的，那么如果是接口的话要怎么处理？</p>
+<pre><code class="language-java">/**
+接口是没有构造函数的，所以我们需要带有@Binds注释的抽象函数
+*/
+interface Engine{
+    fun getEngineType():String
+}
+class ElectricEngine @Inject constructor() :Engine{
+    over fun getEngineType() = &quot;电气引擎&quot;
+}
+/**
+通过@Module标明当前是一个实例对象的提供者
+*/
+@Module
+/**
+这个它的作用域，标示当前的依赖项可以在项目中的所有的Activity中使用。
+*/
+@InstallIn(ActivityComponent::class)
+abstract class EngineModule{
+    @Binds
+    /**
+    注意ElectricEngine必须能够找到对应的依赖项，这里是在它的构造函数上添加了@Inject
+    */
+    abstract fun providesEngineImp(electricEngine:ElectricEngine):Engine
+}
+
+class Car @Inject constructor(val engine:Engine) {
+    val id:String = &quot;123123&quot;
+    val name:String = &quot;1231232&quot;
+}
+/**
+模拟调用
+*/
+@AndroidEntryPoint
+class MainActivity :AppCompatActivity(){
+    @Inject lateinit var car: Car
+        override fun onCreate(savedInstanceState: Bundle?) {
+            car.engine.getEngineType()
+        }
+}
+</code></pre>
+<p>使用过程看代码就可以，注意几个地方：</p>
+<ul>
+<li>1.提供的依赖项的Module必须要是abstract的</li>
+<li>2.对应的实现类也要提供依赖项</li>
+</ul>
+<p>接口可以有多个实现，那么这么个时候要这么处理呢？</p>
+<pre><code class="language-java">/**
+接口多实现的依赖注入
+*/
+interface Engine{
+    fun getEngineType():String
+}
+class ElectricEngine @Inject constructor() :Engine{
+    over fun getEngineType() = &quot;电气引擎&quot;
+}
+
+class OtherEngine @Inject constructor():Engine{
+    over fun getEngineType() = &quot;其他引擎&quot;
+}
+
+class Car @Inject constructor(val engine:Engine) {
+    val id:String = &quot;123123&quot;
+    val name:String = &quot;1231232&quot;
+}
+
+//实现用来区分类别的限定符
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class ElectricTypeEngine
+
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class OtherTypeEngine
+
+@Module
+@InstallIn(ActivityComponent::class)
+object CarModule{
+    /**
+    使用限定符来提供不同引擎的车
+    */
+    @ElectricTypeEngine
+    @Provides
+    /**
+    这里需要使用@Provides，之前尝试在@Binds上加限制符直接编译报错，在最终获取实例的地方要求加限制符的需要提供@Provides
+    */
+    fun providesElectricTypeCar(electricEngine: ElectricEngine):Car{
+        return Car(electricEngine)
+    }
+
+    @OtherTypeEngine
+    @Provides
+    fun providesOtherTypeCar(otherEngine: OtherEngine):Car{
+        return Car(otherEngine)
+    }
+}
+
+/**
+模拟调用
+*/
+@AndroidEntryPoint
+class MainActivity :AppCompatActivity(){
+    @ElectricTypeEngine
+    @Inject
+    lateinit var elecTypeCar: Car
+
+    @OtherTypeEngine
+    @Inject
+    lateinit var otherTypeCar: Car
+
+     override fun onCreate(savedInstanceState: Bundle?) {
+        elecTypeCar.engine.getEngineType()
+        otherTypeCar.engine.getEngineType()
+     }
+}
+</code></pre>
+<p>那么如果是三方的类呢？既不能通过构造函数也没有接口实现的方式，那么这里就可以使用 @Provides 注入实例，它的使用场景（三方的库，Retrofit、OkHttpClient、Room等），或者是需要使用构建者模式创建实例，还有上面的场景根据限制符来返回接口的不同实例对象。</p>
+<pre><code class="language-java">@Module
+@InstallIn(ActivityComponent::class)
+object HttpModule{
+    @provides
+    fun providesApiService():ApiService{
+        returen Retrofit.Builder()
+                    .baseUrl(&quot;&quot;)
+                    .build()
+                    .create(ApiService::class.java)
+    }
+}
+</code></pre>
+<h2 id="4一些注解的解释">4.一些注解的解释</h2>
+<p>在一些我们需要Applcition或者Activity的context的实话，看看Hilt为我们提供了什么<br>
+@ApplicationContext @ActivityContext</p>
+<pre><code class="language-java">//常见的一个场景，Adapter中需要context来进行初始化，
+//那么这里通过@ActivityContext提供了Activity的上下文
+class MyAdapter @Inject constructor(@ActvityContext val context:Context){
+}
+</code></pre>
+<p>在前面的@Module中我们使用了@InstallIn(ActivityComponent::class)来确定实例注入的范围，Hilt组件和注入对象的对应关系</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">Hilt组件</th>
+<th style="text-align:center">注入器面向的对象</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">ActivityRetainedComponent</td>
+<td style="text-align:center">ViewModel</td>
+</tr>
+<tr>
+<td style="text-align:center">ActivityComponent</td>
+<td style="text-align:center">Activity</td>
+</tr>
+<tr>
+<td style="text-align:center">FragmentComponent</td>
+<td style="text-align:center">Fragment</td>
+</tr>
+<tr>
+<td style="text-align:center">ViewComponent</td>
+<td style="text-align:center">View</td>
+</tr>
+<tr>
+<td style="text-align:center">ViewWithFragmentComponent</td>
+<td style="text-align:center">带有@WithFragmentBindings注释的View</td>
+</tr>
+<tr>
+<td style="text-align:center">ServiceComponent</td>
+<td style="text-align:center">Service</td>
+</tr>
+</tbody>
+</table>
+<p>有了组件关系，那么当我们在相应的组件范围内要求返回同一实例要怎么做？如果不添加作用域的话，每次我们获取到的都是一个新的对象，在有作用域的情况下，那么在相应作用域返回的都是同一实例。</p>
+<table>
+<thead>
+<tr>
+<th style="text-align:center">Android类</th>
+<th style="text-align:center">生成组件</th>
+<th style="text-align:center">作用域</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:center">Application</td>
+<td style="text-align:center">ApplicationComponent(这个在新版本中没有了)</td>
+<td style="text-align:center">@Singleton</td>
+</tr>
+<tr>
+<td style="text-align:center">ViewModel</td>
+<td style="text-align:center">ActivityRetainedComponent</td>
+<td style="text-align:center">@ActivityRetainedScope</td>
+</tr>
+<tr>
+<td style="text-align:center">Activity</td>
+<td style="text-align:center">ActivityComponent</td>
+<td style="text-align:center">@ActivityScoped</td>
+</tr>
+<tr>
+<td style="text-align:center">Fragment</td>
+<td style="text-align:center">FragmentComponent</td>
+<td style="text-align:center">@FragmentScoped</td>
+</tr>
+<tr>
+<td style="text-align:center">View</td>
+<td style="text-align:center">ViewComponent</td>
+<td style="text-align:center">@ViewScoped</td>
+</tr>
+<tr>
+<td style="text-align:center">带有@WithFragmentBindings的View</td>
+<td style="text-align:center">ViewWithFragmentComponent</td>
+<td style="text-align:center">@ViewScope</td>
+</tr>
+<tr>
+<td style="text-align:center">Service</td>
+<td style="text-align:center">ServiceComponent</td>
+<td style="text-align:center">@ServiceScoped</td>
+</tr>
+</tbody>
+</table>
+<p>组件层次结构，将模块安装到组件后，其绑定就可以用作该组件中其他绑定的依赖项，也可以用作组件层级结构中该组件下的任何子组件中其他绑定的依赖项：<br>
+<img src="file:///Users/heyueyang/Desktop/hilt-hierarchy.svg" alt="" loading="lazy"></p>
+<p>默认情况下，如果您在视图中执行字段注入，ViewComponent 可以使用 ActivityComponent 中定义的绑定。如果您还需要使用 FragmentComponent 中定义的绑定并且视图是 Fragment 的一部分，应将 @WithFragmentBindings 注释和 @AndroidEntryPoint 一起使用。</p>
+<p>而如果想要在非直接支持的地方使用依赖注入</p>
+<pre><code class="language-java">class TestEntryPoint {
+    /**
+    创建一个注入的点，以及相应的容器
+    */
+    @EntryPoint
+    @InstallIn(FragmentComponent::class)
+    interface CarProviderEntryPoint{
+        /**
+        这里是因为Car是有两种引擎组件的实现，我们需要告知它要那一种，如果只有一个实例的情况下不需要
+        */
+        @OtherTypeEngine
+        fun providerCar():Car
+    }
+
+/**
+使用来自 EntryPointAccessors 的适当静态方法。参数应该是组件实例或充当组件持有者的 @AndroidEntryPoint 对象。确保您以参数形式传递的组件和 EntryPointAccessors 静态方法都与 @EntryPoint 接口上的 @InstallIn 注释中的 Android 类匹配
+*/
+    fun getCar(fragment:Fragment):Car{
+      val carProviderPoint =   EntryPointAccessors.fromFragment(fragment,CarProviderEntryPoint::class.java)
+        return carProviderPoint.providerCar()
+    }
+}
+</code></pre>
+<h2 id="5hilt在viewmodel上的使用">5.Hilt在ViewModel上的使用</h2>
+<p>首先是依赖：</p>
+<pre><code class="language-java">dependencies {
+  implementation 'androidx.hilt:hilt-lifecycle-viewmodel:1.0.0-alpha01'
+  // When using Kotlin.
+  kapt 'androidx.hilt:hilt-compiler:1.0.0-alpha01'
+  // When using Java.
+  annotationProcessor 'androidx.hilt:hilt-compiler:1.0.0-alpha01'
+}
+</code></pre>
+<p>然后在ViewModel上添加注解,并添加带有@Inject的构造方法。</p>
+<pre><code class="language-java">@HiltViewModel
+class ExViewModel @Inject constructor():ViewModel() {
+
+}
+</code></pre>
+<p>然后，带有 @AndroidEntryPoint 注释的 Activity 或 Fragment 可以使用 ViewModelProvider 或 by viewModels() KTX 扩展照常获取 ViewModel 实例：</p>
+<pre><code class="language-java">@AndroidEntryPoint
+class ExampleActivity : AppCompatActivity() {
+  private val viewModel: ExViewModel by viewModels()
+}
+</code></pre>
+<p>但有时候我们需要创建带有参数的ViewModel,例如根据不同的类型获取不同的数据集</p>
+<pre><code class="language-java">/**
+相应的属性需要添加@Assisted，并且构造方法添加@AssistedInject
+*/
+class TestViewModel @AssistedInject constructor(@Assisted val pokeName:String):ViewModel() {
+
+    /**
+    提供一个辅助工厂
+    */
+    @dagger.assisted.AssistedFactory
+    interface AssistedFactory{
+        fun create(name:String):TestViewModel
+    }
+    /**
+    对外提供构建的工厂
+    */
+    companion object{
+        fun provideFactory(
+            factory: AssistedFactory,
+            name:String
+        ):ViewModelProvider.Factory = object :ViewModelProvider.Factory{
+            override fun &lt;T : ViewModel&gt; create(modelClass: Class&lt;T&gt;): T {
+                return factory.create(name) as T
+            }
+        }
+    }
+}
+/**
+模拟调用
+*/
+@AndroidEntryPoint
+class TestActivity:AppCompatActivity() {
+
+    @Inject lateinit var factory:TestViewModel.AssistedFactory
+
+    val viewModel:TestViewModel by viewModels {
+        TestViewModel.provideFactory(factory,&quot;123123&quot;)
+    }
+}
+</code></pre>
+<p>就是在构建ViewModel时需要自己创建构建工厂，来实现参数的数值，在ViewModel创建时设置为自己创建的工厂。</p>
+<h1 id="2021再见今年的最后一篇文章了">2021再见，今年的最后一篇文章了。</h1>
+]]></content>
+    </entry>
+    <entry>
+        <title type="html"><![CDATA[手势控制以及多点触控]]></title>
+        <id>https://arms-merchants.github.io/post/shou-shi-kong-zhi-yi-ji-duo-dian-hong-kong/</id>
+        <link href="https://arms-merchants.github.io/post/shou-shi-kong-zhi-yi-ji-duo-dian-hong-kong/">
+        </link>
+        <updated>2021-12-27T07:42:47.000Z</updated>
+        <content type="html"><![CDATA[<h2 id="场景1实现一个简单的photoview相关功能包括双击放大放大拖动双指缩放">场景1：实现一个简单的PhotoView，相关功能包括，双击放大，放大拖动，双指缩放</h2>
+<h3 id="功能分析">功能分析：</h3>
+<p>1.双击放大，放大拖动：<br>
+官方提供了GestureDetector来进行手势相关的处理：</p>
+<pre><code class="language-java">/**
+这里使用SimpleOnGestureListener，SimpleOnGestureListener实现了OnDoubleTapListener接口，这里就有我们需要使用的双击实现的回掉
+*/
+val gestureDetector = GestureDetector(context, gestureDetectorListener)
+
+ /**
+     * 手势处理类
+     */
+    val gestureDetectorListener = object : GestureDetector.SimpleOnGestureListener() {
+
+        /**
+         * 一个事件的开始是从down开始的，如果down没有获取到
+         * 那么后续的事件也不会再消费，所以这里为了实现双击的效果，需要消费事件
+         */
+        override fun onDown(e: MotionEvent?): Boolean {
+            return true
+        }
+
+        /**
+         * 显示水波纹
+         */
+        override fun onShowPress(e: MotionEvent?) {
+            super.onShowPress(e)
+        }
+
+        /**
+         * 单击事件的，up事件时回掉
+         */
+        override fun onSingleTapUp(e: MotionEvent?): Boolean {
+            return super.onSingleTapUp(e)
+        }
+
+        /**
+         * 滑动是进行图像移动
+         */
+        override fun onScroll(
+            e1: MotionEvent?,
+            e2: MotionEvent?,
+            distanceX: Float,
+            distanceY: Float
+        ): Boolean {
+         return super.onScroll(e1, e2, distanceX, distanceY)
+        }
+
+        /**
+         * 长按
+         */
+        override fun onLongPress(e: MotionEvent?) {
+            super.onLongPress(e)
+        }
+
+        /**
+         * 惯性滑动，在惯性滑动的情况下实现一个回弹的效果
+         */
+        override fun onFling(
+            e1: MotionEvent?,
+            e2: MotionEvent?,
+            velocityX: Float,
+            velocityY: Float
+        ): Boolean {
+            return super.onFling(e1, e2, velocityX, velocityY)
+        }
+
+        /**
+         * 点击在up以及Tag时会触发回掉
+         */
+        override fun onSingleTapConfirmed(e: MotionEvent?): Boolean {
+            return super.onSingleTapConfirmed(e)
+        }
+
+        /**
+         * 双击事件的的Event回掉，包括有down，move，up
+         */
+        override fun onDoubleTapEvent(e: MotionEvent?): Boolean {
+            return super.onDoubleTapEvent(e)
+
+        }
+
+        override fun onContextClick(e: MotionEvent?): Boolean {
+            return super.onContextClick(e)
+        }
+
+        /**
+         * 双击事件的第二次down事件会进行回掉
+         */
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+             return super.onDoubleTap(e)
+        }
+    }
+</code></pre>
+<p>根据相关的注释，我们可以在onDoubleTap处理双击所发的处理，onScroll来进行滑动的处理并且可以在onFling中处理滑动的惯性处理，具体的业务处理看下面的完整代码。<br>
+2.双指缩放：<br>
+缩放手势处理类：ScaleGestureDetector</p>
+<pre><code class="language-java">scaleGestureDetector = ScaleGestureDetector(context, PhotoScaleGestureListener())
+
+ /**
+     * 手势发生时接收通知的监听器。 如果你想监听所有不同的手势，那么实现这个接口。 如果您只想侦听子集，
+     * 扩展ScaleGestureDetector.SimpleOnScaleGestureListener可能会更容易。 应用程序将按以下顺序接收事件：
+    一个onScaleBegin(ScaleGestureDetector)
+    零个或多个onScale(ScaleGestureDetector)
+    一个onScaleEnd(ScaleGestureDetector)
+     */
+    inner class PhotoScaleGestureListener : ScaleGestureDetector.OnScaleGestureListener {
+        /**
+         * 响应正在进行的手势的缩放事件。 通过指针运动报告
+         * @param
+         * @return 检测器是否应将此事件视为已处理。 如果事件未被处理，探测器将继续累积运动，直到事件被处理。 例如，如果应用程序只想在更改大于 0.01 时更新缩放因子，这会很有用。
+         */
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            return false
+        }
+
+        /**
+         * @return 检测器是否应继续识别此手势。 例如，如果手势开始于有意义的区域之外的焦点，则 onScaleBegin() 可能会返回 false 以忽略手势的其余部分
+         */
+        override fun onScaleBegin(detector: ScaleGestureDetector?): Boolean {
+            return true
+        }
+
+        /**
+         * 手势缩放结束时，处理边界问题
+         */
+        override fun onScaleEnd(detector: ScaleGestureDetector?) {
+        }
+    }
+</code></pre>
+<p>当我们构建好这两个手势处理类后就可以去接管View的Touch事件</p>
+<pre><code class="language-java">  override fun onTouchEvent(event: MotionEvent?): Boolean {
+      //首先先处理的是双指缩放，因为如果先处理双击和滑动的话，双指就永远没有机会触发了
+        var result = scaleGestureDetector.onTouchEvent(event)
+        if (!scaleGestureDetector.isInProgress) {
+            result = gestureDetector.onTouchEvent(event)
+        }
+        return result
+    }
+</code></pre>
+<h3 id="完整的代码">完整的代码：</h3>
+<p>整个构建涉及到的知识点包括：自定义view，手势控制，属性动画，</p>
+<pre><code class="language-java">package com.arms.flowview.photoView
+
+import android.animation.ObjectAnimator
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.util.AttributeSet
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
+import android.view.View
+import android.widget.OverScroller
+import com.arms.flowview.R
+import com.arms.flowview.ext.logE
+import com.arms.flowview.utils.ConverUtils
+import com.arms.flowview.utils.ImageUtils
+
+/**
+ *    author : heyueyang
+ *    time   : 2021/12/21
+ *    desc   :还有两地需要优化，处理最开始图片加载的问，最开始图片加载的大小不对，图片资源的获取现在是直接构建死的本地图片路径，这里如果要支持url的话要怎么处理
+ *    version: 1.0
+ */
+class PhotoView : View {
+
+
+    private lateinit var bitmap: Bitmap
+    private val mPaint = Paint()
+
+    /**
+     * 图像最初始时的x和y的坐标
+     */
+    var originalOffsetX = 0f
+    var originalOffsetY = 0f
+
+    //图像的偏移坐标
+    private var offSetX = 0f
+    private var offSetY = 0f
+
+    /**
+     * 放大的比例
+     */
+    private val OVER_SCALE_FACTOR = 1.5f
+
+    //当前的缩放比例
+    private var currentScale = 0f
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    //最小的缩放比例
+    private var smallScale = 0f
+
+    //最大的缩放比例
+    private var bigScale = 0f
+
+    //记录当前的状态是不是已经是放大
+    private var isEnlarge = false
+
+    /**
+     * 使用提供的MotionEvent检测各种手势和事件。 GestureDetector.OnGestureListener回调将在发生特定运动事件时通知用户。 此类应仅与通过触摸报告的MotionEvent一起使用（不要用于轨迹球事件）。 要使用这个类：
+    为您的View创建一个GestureDetector实例
+    在View.onTouchEvent(MotionEvent)方法中，确保您调用onTouchEvent(MotionEvent) 。 回调中定义的方法将在事件发生时执行。
+    如果监听GestureDetector.OnContextClickListener.onContextClick(MotionEvent)你必须在View.onGenericMotionEvent(MotionEvent)onGenericMotionEvent(MotionEvent)
+    中调用onGenericMotionEvent(MotionEvent) View.onGenericMotionEvent(MotionEvent) 。
+     */
+    private lateinit var gestureDetector: GestureDetector
+
+    /**
+     * 此类封装了滚动，并具有超出滚动操作边界的能力。 在大多数情况下，此类是Scroller替代品
+     */
+    private lateinit var overScroller: OverScroller
+
+    private lateinit var scaleGestureDetector: ScaleGestureDetector
+
+    constructor(context: Context?) : super(context) {
+        init(context)
+    }
+
+    constructor(context: Context?, attrs: AttributeSet?) : super(context, attrs) {
+        init(context)
+    }
+
+    constructor(context: Context?, attrs: AttributeSet?, defStyleAttr: Int) : super(
+        context,
+        attrs,
+        defStyleAttr
+    ) {
+        init(context)
+    }
+
+    private fun init(context: Context?) {
+        //获取bitmap
+        bitmap =
+            ImageUtils.instant.getBitmapBySize(context!!, R.drawable.test, ConverUtils.dp2px(300f))
+        //注册手势监听类
+        gestureDetector = GestureDetector(context, gestureDetectorListener)
+        //为了实现在滑动到边缘的回弹效果
+        overScroller = OverScroller(context)
+        //缩放操作
+        scaleGestureDetector = ScaleGestureDetector(context, PhotoScaleGestureListener())
+    }
+    /**
+    绘制这里其实一直都是以原始的x，y进行绘制的，不过是在发生变化的时候，偏移画布（将需要的内容展示到屏幕上）和缩放大画布（原本需要1像素，现在需要2个或者更多来展示）
+    */
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        //currentScale当前的比例是不断变化的，这样计算获取到当前需要变化的比例，例如最开始的适合currentScale = smallScale，那么scaleFaction = 0，translate的操作就是（0，0）不需要偏移
+        val scaleFaction = (currentScale - smallScale) / (bigScale - smallScale)
+        //画布偏移
+        canvas.translate(offSetX * scaleFaction, offSetY * scaleFaction)
+        //根据比例以控件中心为轴心进行缩放
+        canvas.scale(currentScale, currentScale, width / 2f, height / 2f)
+        //绘制图像
+        canvas.drawBitmap(bitmap, originalOffsetX, originalOffsetY, mPaint)
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        originalOffsetX = (width - bitmap.width) / 2f
+        originalOffsetY = (height - bitmap.height) / 2f
+        //放大的比例，最大的放大比例取宽高中小的那个，因为它的比例大
+        if ((bitmap.width / bitmap.height) &gt; width / height) {
+            //说明是宽大于高的
+            smallScale = (width / bitmap.width).toFloat()
+            bigScale = (height / bitmap.height).toFloat() * OVER_SCALE_FACTOR
+        } else {
+            smallScale = (height / bitmap.height).toFloat()
+            bigScale = (width / bitmap.width).toFloat() * OVER_SCALE_FACTOR
+        }
+        currentScale = smallScale
+    }
+
+    override fun onTouchEvent(event: MotionEvent?): Boolean {
+        var result = scaleGestureDetector.onTouchEvent(event)
+        if (!scaleGestureDetector.isInProgress) {
+            result = gestureDetector.onTouchEvent(event)
+        }
+        return result
+    }
+
+    private var scaleAnimator: ObjectAnimator? = null
+
+    private fun getScaleAnimation(smallScale: Float, bigScale: Float): ObjectAnimator {
+        if (scaleAnimator == null) {
+            //缩放处理的为currentScale这个属性，范围为smallScale到bigScale
+            scaleAnimator = ObjectAnimator.ofFloat(this, &quot;currentScale&quot;, 0f)
+        }
+        scaleAnimator!!.setFloatValues(smallScale, bigScale)
+        return scaleAnimator!!
+    }
+
+    /**
+     * 控制边界范围
+     */
+    private fun fixOffsets() {
+        //x轴的偏移必须在一个范围之内，这个范围的最大值是大图的最大宽度-控件宽度的一半，这里是在图像的右边，而在左边是的是负值的范围，y轴类似
+        offSetX = Math.min(offSetX, (bitmap.width * bigScale - width) / 2f)
+        offSetX = Math.max(offSetX, -(bitmap.width * bigScale - width) / 2f)
+        offSetY = Math.min(offSetY, (bitmap.height * bigScale - height) / 2f)
+        offSetY = Math.max(offSetY, -(bitmap.height * bigScale - height) / 2f)
+    }
+
+
+    /**
+     * 手势处理类
+     */
+    val gestureDetectorListener = object : GestureDetector.SimpleOnGestureListener() {
+
+        /**
+         * 一个事件的开始是从down开始的，如果down没有获取到
+         * 那么后续的事件也不会再消费，所以这里为了实现双击的效果，需要消费事件
+         */
+        override fun onDown(e: MotionEvent?): Boolean {
+            return true
+        }
+
+        /**
+         * 显示水波纹
+         */
+        override fun onShowPress(e: MotionEvent?) {
+            super.onShowPress(e)
+        }
+
+        /**
+         * 单击事件的，up事件时回掉
+         */
+        override fun onSingleTapUp(e: MotionEvent?): Boolean {
+            return super.onSingleTapUp(e)
+        }
+
+        /**
+         * 滑动是进行图像移动
+         */
+        override fun onScroll(
+            e1: MotionEvent?,
+            e2: MotionEvent?,
+            distanceX: Float,
+            distanceY: Float
+        ): Boolean {
+            //只在大图的情况下进行触发
+            if (isEnlarge) {
+                offSetX -= distanceX
+                offSetY -= distanceY
+                fixOffsets()
+                invalidate()
+            }
+            return super.onScroll(e1, e2, distanceX, distanceY)
+        }
+
+        /**
+         * 长按
+         */
+        override fun onLongPress(e: MotionEvent?) {
+            super.onLongPress(e)
+        }
+
+        /**
+         * 惯性滑动，在惯性滑动的情况下实现一个回弹的效果
+         */
+        override fun onFling(
+            e1: MotionEvent?,
+            e2: MotionEvent?,
+            velocityX: Float,
+            velocityY: Float
+        ): Boolean {
+            if (isEnlarge) {
+                //overX – 超出范围。 如果 &gt; 0，则可以在任一方向进行水平翻转。
+                //overY – 超出范围。 如果 &gt; 0，则可以在任一方向进行垂直翻转
+                overScroller.fling(
+                    offSetX.toInt(), offSetY.toInt(), velocityX.toInt(), velocityY.toInt(),
+                    (-(bitmap.width * bigScale - width) / 2).toInt(),
+                    ((bitmap.width * bigScale - width) / 2).toInt(),
+                    (-(bitmap.height * bigScale - height) / 2).toInt(),
+                    ((bitmap.height * bigScale - height) / 2).toInt(), 300, 300
+                )
+                postOnAnimation(FlishRunner())
+            }
+            return super.onFling(e1, e2, velocityX, velocityY)
+        }
+
+        /**
+         * 点击在up以及Tag时会触发回掉
+         */
+        override fun onSingleTapConfirmed(e: MotionEvent?): Boolean {
+            return super.onSingleTapConfirmed(e)
+        }
+
+        /**
+         * 双击事件的的Event回掉，包括有down，move，up
+         */
+        override fun onDoubleTapEvent(e: MotionEvent?): Boolean {
+            return super.onDoubleTapEvent(e)
+        }
+
+        override fun onContextClick(e: MotionEvent?): Boolean {
+            return super.onContextClick(e)
+        }
+
+        /**
+         * 双击事件的第二次down事件会进行回掉
+         */
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+            isEnlarge = !isEnlarge
+            if (isEnlarge) {
+                //实现的效果是点击是点击什么地方放大什么地方，所以需要对坐标进行偏移处理
+                offSetX = (e.x - width / 2) - (e.x - width / 2) * bigScale / smallScale
+                offSetY = (e.y - height / 2) - (e.y - height / 2) * bigScale / smallScale
+                fixOffsets()
+                //通过动画来进行缩放处理
+                getScaleAnimation(smallScale, bigScale).start()
+            } else {
+                //动画反转
+                val tempScale = Math.min(currentScale, bigScale)
+                getScaleAnimation(smallScale, tempScale).reverse()
+            }
+            return super.onDoubleTap(e)
+        }
+    }
+
+    inner class FlishRunner : Runnable {
+        override fun run() {
+            //computeScrollOffset为true，说明动画还没结束
+            if (overScroller.computeScrollOffset()) {
+                //currX获取的是当原点和现在位置的绝对距离，也就是我们需要的偏移量，因为需要回弹处理，这里不需要处理边界问题
+                offSetX = overScroller.currX.toFloat()
+                offSetY = overScroller.currY.toFloat()
+                invalidate()
+                postOnAnimation(this)
+            }
+        }
+    }
+
+    /**
+     * 手势发生时接收通知的监听器。 如果你想监听所有不同的手势，那么实现这个接口。 如果您只想侦听子集，
+     * 扩展ScaleGestureDetector.SimpleOnScaleGestureListener可能会更容易。 应用程序将按以下顺序接收事件：
+    一个onScaleBegin(ScaleGestureDetector)
+    零个或多个onScale(ScaleGestureDetector)
+    一个onScaleEnd(ScaleGestureDetector)
+     */
+    inner class PhotoScaleGestureListener : ScaleGestureDetector.OnScaleGestureListener {
+
+        var initScale = 0f;
+
+        /**
+         * 响应正在进行的手势的缩放事件。 通过指针运动报告
+         * @param
+         * @return 检测器是否应将此事件视为已处理。 如果事件未被处理，探测器将继续累积运动，直到事件被处理。 例如，如果应用程序只想在更改大于 0.01 时更新缩放因子，这会很有用。
+         */
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            currentScale = initScale * detector.scaleFactor
+            isEnlarge = currentScale &gt; smallScale
+            invalidate()
+            return false
+        }
+
+        /**
+         * @return 检测器是否应继续识别此手势。 例如，如果手势开始于有意义的区域之外的焦点，则 onScaleBegin() 可能会返回 false 以忽略手势的其余部分
+         */
+        override fun onScaleBegin(detector: ScaleGestureDetector?): Boolean {
+            //这是缩放比例不都是从零开始的
+            initScale = currentScale
+            return true
+        }
+
+        /**
+         * 手势缩放结束时，处理边界问题，可以在双指时展示更大或更小，但当结束时恢复到边界范围
+         */
+        override fun onScaleEnd(detector: ScaleGestureDetector?) {
+            if (currentScale &gt; bigScale) {
+                getScaleAnimation(bigScale, currentScale).reverse()
+            } else if (currentScale &lt; smallScale) {
+                getScaleAnimation(currentScale, smallScale).start()
+            }
+        }
+    }
+}
+</code></pre>
+<p>预留未完成：<br>
+1.加载的图片比例需要计算，现在是固定为300dp<br>
+2.图片的加载功能没有</p>
+<hr>
+<h2 id="场景2多点触控">场景2：多点触控</h2>
+<p>在Android上是支持多点触控的，注意的点就是需要是使用getActionMasked，原来的getAction只能获取到index为0的手指事件，这里需要注意的时事件的触发时机，并且所有的手指的Even都是通过一个数组进行存储的，当抬起时从数组中移除这个，但是当有新的手指落下时，会先分配到之前抬起的index上。</p>
+<pre><code class="language-java">package com.arms.flowview.photoView
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.util.AttributeSet
+import android.view.MotionEvent
+import android.view.View
+import com.arms.flowview.R
+import com.arms.flowview.utils.ConverUtils
+import com.arms.flowview.utils.ImageUtils
+import com.orhanobut.logger.Logger
+
+/**
+ *    author : heyueyang
+ *    time   : 2021/12/27
+ *    desc   :
+ *    version: 1.0
+ */
+class MultiPointView : View {
+
+    private lateinit var bitmap: Bitmap
+    private lateinit var paint: Paint
+
+    // 手指滑动偏移值
+    private var offsetX = 0f
+    private var offsetY = 0f
+
+    // 按下时的x,y坐标
+    private var downX = 0f
+    private var downY = 0f
+
+    // 上一次的偏移值
+    private var lastOffsetX = 0f
+    private var lastOffsetY = 0f
+
+    // 当前按下的pointId
+    private var currentPointId = 0
+
+    constructor(context: Context?) : super(context)
+    constructor(context: Context?, attrs: AttributeSet?) : super(context, attrs)
+    constructor(context: Context?, attrs: AttributeSet?, defStyleAttr: Int) : super(
+        context,
+        attrs,
+        defStyleAttr
+    )
+
+    init {
+        init(context)
+    }
+
+    private fun init(context: Context?) {
+        bitmap =
+            ImageUtils.instant.getBitmapBySize(context!!, R.drawable.dm1, ConverUtils.dp2px(300f))
+        paint = Paint().apply {
+            isAntiAlias = true
+        }
+    }
+
+    override fun draw(canvas: Canvas) {
+        super.draw(canvas)
+        canvas.drawBitmap(bitmap, offsetX, offsetY, paint)
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        //要想处理多指必须使用actionMasked
+        when (event.actionMasked) {
+            //DOWN只会在第一根手指落下时触发
+            MotionEvent.ACTION_DOWN -&gt; {
+                downX = event.x
+                downY = event.y
+
+                lastOffsetX = offsetX
+                lastOffsetY = offsetY
+                currentPointId = 0
+            }
+            MotionEvent.ACTION_MOVE -&gt; {
+                //通过id获取当前的下标,这里实现的效果是，在前一根手指
+                val index = event.findPointerIndex(currentPointId)
+
+                offsetX = lastOffsetX + event.getX(index) - downX
+                offsetY = lastOffsetY + event.getY(index) - downY
+                invalidate()
+            }
+            MotionEvent.ACTION_POINTER_DOWN -&gt; {
+                //多指操作的情况下，从第二个手指落下时会触发
+                //获取当前的落下的下标
+                val actionIndex = event.actionIndex
+                Logger.e(&quot;actionIndex:${actionIndex}&quot;)
+                //通过下标获取对应的手指ID，
+                currentPointId = event.getPointerId(actionIndex)
+                downX = event.getX(actionIndex)
+                downY = event.getY(actionIndex)
+                lastOffsetX = offsetX
+                lastOffsetY = offsetY
+            }
+            MotionEvent.ACTION_POINTER_UP -&gt; {
+                //非最后一根手指抬起时触发
+                var upIndex = event.actionIndex
+                val pointId = event.getPointerId(upIndex)
+                //值处理当前正在相应事件的手指
+                if (pointId == currentPointId) {
+                    //在手指抬起后获取下一个相应的下标
+                    val nextLastIndex =
+                        if (upIndex == event.pointerCount - 1) {
+                            event.pointerCount - 2
+                        } else {
+                            upIndex++
+                        }
+                    currentPointId = event.getPointerId(nextLastIndex)
+
+                    downX = event.getX(nextLastIndex)
+                    downY = event.getY(nextLastIndex)
+                    lastOffsetX = offsetX
+                    lastOffsetY = offsetY
+                }
+            }
+            //最后一根手指抬起时触发
+            MotionEvent.ACTION_UP-&gt;{
+
+            }
+        }
+        return true
+    }
+
+}
+</code></pre>
+<h1 id="项目地址"><a href="https://github.com/Arms-merchants/Study/tree/main/UI/FlowView/app/src/main/java/com/arms/flowview/photoView">项目地址</a></h1>
+]]></content>
+    </entry>
+</feed>

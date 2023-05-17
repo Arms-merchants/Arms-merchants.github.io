@@ -1,0 +1,314 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kotlin关键字by lazy中的Mode分析 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1684231823842">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Kotlin关键字by lazy中的Mode分析 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="    class TestManager private constructor(){
+        companion object{
+            val instance by lazy(LazyThreadSafety..." />
+    <meta name="keywords" content="kotlin" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1684231823842" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Kotlin关键字by lazy中的Mode分析
+            </h2>
+            <div class="post-info">
+              <span>
+                2023-05-16
+              </span>
+              <span>
+                5 min read
+              </span>
+              
+                <a href="https://arms-merchants.github.io/tag/kotlin/" class="post-tag">
+                  # kotlin
+                </a>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1684162485237-bda5fab36be0?ixlib=rb-4.0.3&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=774&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <pre><code class="language-java">    class TestManager private constructor(){
+        companion object{
+            val instance by lazy(LazyThreadSafetyMode.SYNCHRONIZED){
+                TestManager()
+            }
+        }
+    }
+</code></pre>
+<p>上面代码是常见的Kotlin中通过by关键字来创建单例对象的实现，但lazy中的Mode是什么呢？<br>
+了解这些之前，我们先简单分别说下lazy和by，其中by是Kotlin中用于委托的关键字，而lazy是一个方法，其返回值是委托的具体对象。by lazy用于实现数据的惰性加载，在初始化一个常量时确保其不会被多次初始化。<br>
+LazyThreadSafetyMode的值有三个，通过它来确定对象的创建模式：</p>
+<ul>
+<li>LazyThreadSafetyMode.SYNCHRONIZED</li>
+<li>LazyThreadSafetyMode.PUBLICATION</li>
+<li>LazyThreadSafetyMode.NONE</li>
+</ul>
+<p>lazy方法默认是使用SynchronizedLazyImpl来返回委托的具体对象的。<br>
+Lazy实现了by lazy的方法：</p>
+<pre><code class="language-java">@kotlin.internal.InlineOnly
+public inline operator fun &lt;T&gt; Lazy&lt;T&gt;.getValue(thisRef: Any?, property: KProperty&lt;*&gt;): T = value
+</code></pre>
+<p>也就是我们的获取到的值就是这个value，那么我们就要来看这个value是怎么获取到的。分析三种Mode下value不同取值，可以确定后续我们在使用by lazy时应该使用那种Mode，首先先看SynchronizedLazyImpl的实现：</p>
+<pre><code class="language-java">private class SynchronizedLazyImpl&lt;out T&gt;(initializer: () -&gt; T, lock: Any? = null) : Lazy&lt;T&gt;, Serializable {
+    //lazy后的方法体，返回当前需要创建的对象
+    private var initializer: (() -&gt; T)? = initializer
+    //默认值，定义了一个未初始化的值，为了解决DCL带来指令重排序导致主存和工作内存数据不一致的问题，这里使用Volatile原语注解，线程安全
+    @Volatile private var _value: Any? = UNINITIALIZED_VALUE
+    //锁
+    // final field is required to enable safe publication of constructed instance
+    private val lock = lock ?: this
+
+    override val value: T
+        //获取value的值就是通过get方法
+        get() {
+            val _v1 = _value
+            //如果当前的值已经不是未初始化的了那么直接返回
+            if (_v1 !== UNINITIALIZED_VALUE) {
+                @Suppress(&quot;UNCHECKED_CAST&quot;)
+                return _v1 as T
+            }
+
+            return synchronized(lock) {
+                //双重检测
+                val _v2 = _value
+                if (_v2 !== UNINITIALIZED_VALUE) {
+                    @Suppress(&quot;UNCHECKED_CAST&quot;) (_v2 as T)
+                } else {
+                    //如果没有初始化，那么通过initializer来进行初始化操作
+                    val typedValue = initializer!!()
+                    //并将这个值保存在_value中
+                    _value = typedValue
+                    initializer = null
+                    typedValue
+                }
+            }
+        }
+
+    override fun isInitialized(): Boolean = _value !== UNINITIALIZED_VALUE
+
+    override fun toString(): String = if (isInitialized()) value.toString() else &quot;Lazy value not initialized yet.&quot;
+
+    private fun writeReplace(): Any = InitializedLazyImpl(value)
+}
+</code></pre>
+<p>SafePublicationLazyImpl的实现：</p>
+<pre><code class="language-java">private class SafePublicationLazyImpl&lt;out T&gt;(initializer: () -&gt; T) : Lazy&lt;T&gt;, Serializable {
+    @Volatile private var initializer: (() -&gt; T)? = initializer
+    @Volatile private var _value: Any? = UNINITIALIZED_VALUE
+    // this final field is required to enable safe initialization of the constructed instance
+    private val final: Any = UNINITIALIZED_VALUE
+
+    override val value: T
+        get() {
+            val value = _value
+            if (value !== UNINITIALIZED_VALUE) {
+                @Suppress(&quot;UNCHECKED_CAST&quot;)
+                return value as T
+            }
+            val initializerValue = initializer
+            // if we see null in initializer here, it means that the value is already set by another thread
+            if (initializerValue != null) {
+                   //如果是多线程的话，初始化方法会调用多次
+                val newValue = initializerValue()
+                //通过CAS保证只有在原始值为UNINITIALIZED_VALUE时赋值
+                if (valueUpdater.compareAndSet(this, UNINITIALIZED_VALUE, newValue)) {
+                    initializer = null
+                    return newValue
+                }
+            }
+            @Suppress(&quot;UNCHECKED_CAST&quot;)
+            return _value as T
+        }
+
+    override fun isInitialized(): Boolean = _value !== UNINITIALIZED_VALUE
+
+    override fun toString(): String = if (isInitialized()) value.toString() else &quot;Lazy value not initialized yet.&quot;
+
+    private fun writeReplace(): Any = InitializedLazyImpl(value)
+
+    companion object {
+        private val valueUpdater = 
+        //java中的原子操作
+        java.util.concurrent.atomic.AtomicReferenceFieldUpdater.newUpdater(
+            SafePublicationLazyImpl::class.java,
+            Any::class.java,
+            &quot;_value&quot;
+        )
+    }
+}
+</code></pre>
+<p>UnsafeLazyImpl的实现：</p>
+<pre><code class="language-java">internal class UnsafeLazyImpl&lt;out T&gt;(initializer: () -&gt; T) : Lazy&lt;T&gt;, Serializable {
+    private var initializer: (() -&gt; T)? = initializer
+    private var _value: Any? = UNINITIALIZED_VALUE
+
+    override val value: T
+        get() {
+            //只是是未初始化那么就调用初始化方法
+            //多线程的情况下，那么它的值为最后的赋值方法，线程不安全
+            if (_value === UNINITIALIZED_VALUE) {
+                _value = initializer!!()
+                initializer = null
+            }
+            @Suppress(&quot;UNCHECKED_CAST&quot;)
+            return _value as T
+        }
+
+    override fun isInitialized(): Boolean = _value !== UNINITIALIZED_VALUE
+
+    override fun toString(): String = if (isInitialized()) value.toString() else &quot;Lazy value not initialized yet.&quot;
+
+    private fun writeReplace(): Any = InitializedLazyImpl(value)
+}
+</code></pre>
+<p>经过上面的源码分析，我们不难看出三种Mode的区别：</p>
+<ul>
+<li>LazyThreadSafetyMode.SYNCHRONIZED 通过synchronized关键值创建同步锁来实现线程安全</li>
+<li>LazyThreadSafetyMode.PUBLICATION 通过CAS来保证线程安全，多线程的情况下初始化方法会调用，但只有一个生效。</li>
+<li>LazyThreadSafetyMode.NONE，只要标识为未初始化就调用初始化来赋值，线程不安全。</li>
+</ul>
+<p>所以经过上面的分析，在确定当前属性不会在多个线程之间共享的时候，则可以使用NONE模式，这是最快的模式，但也是最不安全的模式。<br>
+如果属性是要在多个线程间共享，那么使用SYNCHRONIZED和PUBLICATION，但因为SYNCHRONIZED引入了锁的机制，它是最安全的，但也是最慢的模式。折中的话则可以使用PUBLICATION。</p>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/dui-closeable-de-zi-dong-guan-bi-chu-li-yu-fa/">
+              <h3 class="post-title">
+                对Closeable的自动关闭处理，语法🍬
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
