@@ -1,0 +1,389 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>在源码分析的基础上进行滑动冲突的解决 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1704441990587">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="在源码分析的基础上进行滑动冲突的解决 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="根据前面进行的事件分发的源码分析，现在我们进行滑动冲突的解决。事件的冲突是只发生在ACTION_MOVE中的，根据解决冲突位置的不同，可以有两种解决方案:
+在处理冲突之前，先回顾一下ViewGroup中事件分发中拦截的流程：
+  // Ch..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1704441990587" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              在源码分析的基础上进行滑动冲突的解决
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-11-08
+              </span>
+              <span>
+                6 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1636390878746-b9cbc10efd23?ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;ixlib=rb-1.2.1&amp;auto=format&amp;fit=crop&amp;w=774&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>根据前面进行的事件分发的源码分析，现在我们进行滑动冲突的解决。事件的冲突是只发生在ACTION_MOVE中的，根据解决冲突位置的不同，可以有两种解决方案:<br>
+在处理冲突之前，先回顾一下ViewGroup中事件分发中拦截的流程：</p>
+<pre><code class="language-java">  // Check for interception.
+            //是否拦截
+            final boolean intercepted;
+            if (actionMasked == MotionEvent.ACTION_DOWN
+                    || mFirstTouchTarget != null) {
+                        /**子view调用requestDisallowInterceptTouchEvent来修改是否允许拦截，如果不允许拦截的话，会进入if，
+                        这个时候就要看ViewGroup的onInterceptTouchEvent的值返回是什么,但是事件的分发是在子View之前，
+                        ACTION_DOWN的时候会重置mGroupFlags为   mGroupFlags &amp;= ~FLAG_DISALLOW_INTERCEPT;所以disallowIntercept为false会走if的判断，需要父布局处理dowan的事件拦截判断。*/
+                final boolean disallowIntercept = (mGroupFlags &amp; FLAG_DISALLOW_INTERCEPT) != 0;
+                if (!disallowIntercept) {
+                    intercepted = onInterceptTouchEvent(ev);
+                    ev.setAction(action); // restore action in case it was changed
+                } else {
+                    intercepted = false;
+                }
+            } else {
+                /**如果是拦截的话，第一次的move只会重置相应的事件，mFirstTouchTarget置为null，并且会给子view发一个ACTION_CANCEL的事件，
+                这里就相应之前的说法，子View的ACTION_CANCEL事件只有在父布局拦截的时候会触发，拦截后下面会走dispatchTransformedTouchEvent自己进行处理*/
+                // There are no touch targets and this action is not an initial down
+                // so this view group continues to intercept touches.
+                intercepted = true;
+            }
+</code></pre>
+<p>所以整个冲突的解决思路就是要在合适的时候让合适的对象去处理事件，并且这里处理的原则是在同一个事件链中只相应一个方向的事件，例如ViewPage嵌套ListView，这里会有两个方向的滑动，也就是在响应Viewpage横向事件时，不再响应ListView的竖向的事件，反之亦然。</p>
+<h1 id="第一种内部解决">第一种:内部解决</h1>
+<p>内部结局也就是子控件来控制整个流程中应该由谁来响应事件，是子View自己来处理事件还是父布局来进行拦截（拦截也就是由父布局进行事件的处理）。<br>
+因为ViewGroup的事件分发中的事件链第一个ACTION_DOWN会查找能够响应事件的view，所以我们需要保证在ACTION_DOWN时子view调用requestDisallowInterceptTouchEvent(true)来请求时，ViewGroup的onInterceptTouchEvent要返回false。</p>
+<h2 id="父布局">父布局：</h2>
+<pre><code class="language-java">    @Override
+    public boolean onInterceptTouchEvent(MotionEvent event) {
+        if (event.getAction() == MotionEvent.ACTION_DOWN){
+            super.onInterceptTouchEvent(event);
+            //在ACTION_DOWN时要拦截事件
+            return false;
+        }
+        return true;
+    }
+</code></pre>
+<h2 id="子view">子View：</h2>
+<pre><code class="language-java">  //内部拦截法：子view处理事件冲突
+    private int mLastX, mLastY;
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        int x = (int) event.getX();
+        int y = (int) event.getY();
+
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN: {
+                Log.e(&quot;======&quot;, &quot;ACTION_DOWN&quot;);
+                // mGroupFlags |= FLAG_DISALLOW_INTERCEPT;
+                //之后mGroupFlags &amp; FLAG_DISALLOW_INTERCEPT
+                getParent().requestDisallowInterceptTouchEvent(true);
+                break;
+            }
+            case MotionEvent.ACTION_MOVE: {
+                int deltaX = x - mLastX;
+                int deltaY = y - mLastY;
+                //这里就是如果横向事件满足那么直接进行拦截不再响应事件
+                if (Math.abs(deltaX) &gt; Math.abs(deltaY)) {
+                    Log.e(&quot;======&quot;, &quot;requestDisallowInterceptTouchEvent false&quot;);
+                    getParent().requestDisallowInterceptTouchEvent(false);
+                }
+                break;
+            }
+            case MotionEvent.ACTION_UP: {
+
+                break;
+            }
+            default:
+                break;
+        }
+        mLastX = x;
+        mLastY = y;
+        return super.dispatchTouchEvent(event);
+    }
+</code></pre>
+<h1 id="第二种外部处理">第二种:外部处理</h1>
+<p>也就是父布局进行事件判断，当前是否分发给子View<br>
+父布局：</p>
+<pre><code class="language-java">    // 外部拦截法：父容器处理冲突
+    // 我想要把事件分发给谁就分发给谁
+    @Override
+    public boolean onInterceptTouchEvent(MotionEvent event) {
+        int x = (int) event.getX();
+        int y = (int) event.getY();
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN: {
+                mLastX = (int) event.getX();
+                mLastY = (int) event.getY();
+                break;
+            }
+            case MotionEvent.ACTION_MOVE: {
+                int deltaX = x - mLastX;
+                int deltaY = y - mLastY;
+                //横向移动距离大于竖向移动距离，那么拦截事件不再分发
+                if (Math.abs(deltaX) &gt; Math.abs(deltaY)) {
+                    return true;
+                }
+                break;
+            }
+            case MotionEvent.ACTION_UP: {
+                break;
+            }
+            default:
+                break;
+        }
+        return super.onInterceptTouchEvent(event);
+    }
+</code></pre>
+<hr>
+<p>针对一个实际🌰进行处理</p>
+<pre><code class="language-java">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;android.support.constraint.ConstraintLayout xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;
+    xmlns:app=&quot;http://schemas.android.com/apk/res-auto&quot;
+    android:layout_width=&quot;match_parent&quot;
+    android:layout_height=&quot;match_parent&quot;
+    app:layout_constraintLeft_toLeftOf=&quot;parent&quot;
+    app:layout_constraintRight_toRightOf=&quot;parent&quot;&gt;
+
+    &lt;com.enjoy.srl_vp.SwipeRefreshLayout
+        android:id=&quot;@+id/swipeRefreshLayout&quot;
+        android:layout_width=&quot;match_parent&quot;
+        android:layout_height=&quot;match_parent&quot;&gt;
+
+        &lt;com.enjoy.srl_vp.ViewPager
+            android:id=&quot;@+id/viewPager&quot;
+            android:layout_width=&quot;match_parent&quot;
+            android:layout_height=&quot;match_parent&quot; /&gt;
+
+    &lt;/com.enjoy.srl_vp.SwipeRefreshLayout&gt;
+
+&lt;/android.support.constraint.ConstraintLayout&gt;
+</code></pre>
+<p>一个外层布局是SwipeRefreshLayout,内部ViewPage，ViewPage内部为Fragemnt<br>
+外部解决方案：</p>
+<pre><code class="language-java">    override fun onInterceptTouchEvent(ev: MotionEvent?): Boolean {
+       if(ev != null){
+           when(ev.action){
+               MotionEvent.ACTION_DOWN-&gt;{
+                   mLastX = ev.x.toInt()
+                   mLastY = ev.y.toInt()
+               }
+               MotionEvent.ACTION_MOVE-&gt;{
+                   val delX = ev.x - mLastX
+                   val delY = ev.y-mLastY
+                   //横向滑动不拦截事件
+                   if(Math.abs(delX) &gt;Math.abs(delY)){
+                       return false
+                   }
+               }
+           }
+       }
+        return super.onInterceptTouchEvent(ev)
+    }
+</code></pre>
+<p>内部解决方案：<br>
+父View（SwipeRefreshLayout）:</p>
+<pre><code class="language-java">    @Override
+    public boolean onInterceptTouchEvent(MotionEvent ev) {
+        //还是只需要处理ACTION_DOWN事件
+        if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+            super.onInterceptTouchEvent(ev);
+            return false;
+        }
+        return true;
+    }
+}
+</code></pre>
+<p>子View（ViewPager）:</p>
+<pre><code class="language-java">    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        switch (ev.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                startX = ev.getX();
+                startY = ev.getY();
+                //这句话如果不加的话处理是不会生效的，所以我们需要看一下SwipeRefreshLayout的requestDisallowInterceptTouchEvent是不是有什么特殊处理
+                ViewCompat.setNestedScrollingEnabled(this, true);
+                getParent().requestDisallowInterceptTouchEvent(true);
+                break;
+            case MotionEvent.ACTION_MOVE:
+                x = ev.getX();
+                y = ev.getY();
+                deltaX = Math.abs(x - startX);
+                deltaY = Math.abs(y - startY);
+                if (deltaX &lt; deltaY) {
+                    getParent().requestDisallowInterceptTouchEvent(false);
+                }
+                break;
+            default:
+                break;
+        }
+        return super.dispatchTouchEvent(ev);
+    }
+</code></pre>
+<p>SwipRefreshLayout:</p>
+<pre><code class="language-java">    public void requestDisallowInterceptTouchEvent(boolean b) {
+        /**
+        条件单独分析
+        21没问题
+        前面的条件过
+        包含有子View这里的target不为null
+       所以就需要看这个了 ViewCompat.isNestedScrollingEnabled(this.mTarget))
+       我们获取ViewPage的isNestedScrollingEnabled的值为false，所以这个就没有进入if条件内
+       所以通过 ViewCompat.setNestedScrollingEnabled(this, true);this就是当前的内部view
+        */
+        if ((VERSION.SDK_INT &gt;= 21 || !(this.mTarget instanceof AbsListView)) &amp;&amp; (this.mTarget == null || ViewCompat.isNestedScrollingEnabled(this.mTarget))) {
+            super.requestDisallowInterceptTouchEvent(b);
+        }
+    }
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#%E7%AC%AC%E4%B8%80%E7%A7%8D%E5%86%85%E9%83%A8%E8%A7%A3%E5%86%B3">第一种:内部解决</a>
+<ul>
+<li><a href="#%E7%88%B6%E5%B8%83%E5%B1%80">父布局：</a></li>
+<li><a href="#%E5%AD%90view">子View：</a></li>
+</ul>
+</li>
+<li><a href="#%E7%AC%AC%E4%BA%8C%E7%A7%8D%E5%A4%96%E9%83%A8%E5%A4%84%E7%90%86">第二种:外部处理</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/qian-tao-hua-dong-ji-zhi/">
+              <h3 class="post-title">
+                嵌套滑动机制
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

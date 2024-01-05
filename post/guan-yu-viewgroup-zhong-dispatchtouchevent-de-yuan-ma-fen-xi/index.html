@@ -1,0 +1,908 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>关于ViewGroup中dispatchTouchEvent的源码分析 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1704441990587">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="关于ViewGroup中dispatchTouchEvent的源码分析 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="原文链接
+事件分发流程图
+
+一些结论：
+1.如果一个view在ACTION_DOWN时没有消费事件，那么同一事件序列之后的ACTION_MOVE ACTION_UP都不会交由此view处理
+2.如果一个view在ACTION_DOWN时消费..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1704441990587" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              关于ViewGroup中dispatchTouchEvent的源码分析
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-11-03
+              </span>
+              <span>
+                27 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1637489981573-e45e9297cb21?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=2064&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p><a href="https://juejin.cn/post/6917056099069722632">原文链接</a></p>
+<h3 id="事件分发流程图">事件分发流程图</h3>
+<figure data-type="image" tabindex="1"><img src="https://arms-merchants.github.io//post-images/1635927250830.webp" alt="" loading="lazy"></figure>
+<h3 id="一些结论">一些结论：</h3>
+<p>1.如果一个view在ACTION_DOWN时没有消费事件，那么同一事件序列之后的ACTION_MOVE ACTION_UP都不会交由此view处理<br>
+2.如果一个view在ACTION_DOWN时消费了事件，那么同一事件序列之后的ACTION_MOVE ACTION-UP都由此view处理<br>
+3.如果一个ViewGroup在一定条件下，拦截了ACTION_MOVE事件，那么此前消费事件的子view会收到一个ACTION_CANCEL事件，同时onInteceptTouchEvent在此事件序列不会再调用<br>
+4.ViewGroup中可以进行事件分发以及和事件处理，View主要负责事件处理</p>
+<p>分析事件的视图层级关系：<br>
+<img src="https://arms-merchants.github.io//post-images/1635927846282.webp" alt="" loading="lazy"></p>
+<h3 id="action_down的调用时序图">ACTION_DOWN的调用时序图</h3>
+<p><img src="https://arms-merchants.github.io//post-images/1635927873262.webp" alt="" loading="lazy"><br>
+事件经过流程：<br>
+DecorView -&gt; Activity -&gt; PhoneWindow -&gt; DecorView -&gt; LinearLayout -&gt; FrameLayout -&gt; ActionBarOverlayLayout -&gt; ContentFrameLayout -&gt; ConstraintLayout -&gt; MyViewgroup -&gt; MyView<br>
+递归调用流程：<br>
+<img src="https://arms-merchants.github.io//post-images/1635927950587.webp" alt="" loading="lazy"></p>
+<h2 id="activityjava"><strong>Activity.java</strong></h2>
+<pre><code class="language-java">public boolean dispatchTouchEvent(MotionEvent ev) {
+    if (ev.getAction() == MotionEvent.ACTION_DOWN) {
+        // 当触屏、按home、back等一些人为的操作，会调用此方法，这里就是触屏按下
+        onUserInteraction();
+    }
+    // 调用 PhoneWindow 的 superDispatchTouchEvent 方法
+    // 若 superDispatchTouchEvent 返回true（说明事件被底下的 View 消费了），
+    // 直接return true，不会再执行 Activity 的 onTouchEvent
+    if (getWindow().superDispatchTouchEvent(ev)) {
+        return true;
+    }
+    return onTouchEvent(ev);
+}
+</code></pre>
+<h3 id="针对具体的事件分析在上面层级模型的情况下处理事件分析这里以action_down开始">针对具体的事件分析，在上面层级模型的情况下处理事件分析，这里以ACTION_DOWN开始：</h3>
+<pre><code class="language-java"> @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (mInputEventConsistencyVerifier != null) {
+            mInputEventConsistencyVerifier.onTouchEvent(ev, 1);
+        }
+
+        // If the event targets the accessibility focused view and this is it, start
+        // normal event dispatch. Maybe a descendant is what will handle the click.
+        if (ev.isTargetAccessibilityFocus() &amp;&amp; isAccessibilityFocusedViewOrHost()) {
+            ev.setTargetAccessibilityFocus(false);
+        }
+        //
+        boolean handled = false;
+        //进行事件进行安全过滤，根据源码看基本上就是处理当view被遮挡时不响应事件
+        if (onFilterTouchEventForSecurity(ev)) {
+            final int action = ev.getAction();
+            /**
+            这里的&amp; MotionEvent.ACTION_MASK（取低8位），因为支持多点触摸，最大可响应的多点触摸32个点
+            第一个手指按下的事件：ACTION_DOWN
+            第二个手指按下的事件：ACTION_POINTER_DOWN
+            此时抬起一根手指的事件：ACTION_POINTER_UP
+            再抬起另外一根手指的事件：ACTION_UP
+            通过ev.getAction()得到值包含动作（低8位）、触摸索引点（9-16位）等，而不单单是上述的几种行为动作，所以不能通过if(ev.getAction()==ACTION_POINTER_DOWN)这样对比，因为ACTION_POINTER_DOWN只是ev.getAction()中的一部分
+            那么现在需要知道当前MotionEvent的action是何种类型，就需要从ev.getAction()返回的值里剥离出来，所以加了&amp; MotionEvent.ACTION_MASK过滤其他信息，只取低8位，此举与ev.getActionMasked等效。
+            **/
+             // 获取事件类型。action的值高8位会包含该事件触摸点索引信息，actionMasked为干净的事件类型，
+            // 在单点触摸情况下action和actionMasked无差别。
+            final int actionMasked = action &amp; MotionEvent.ACTION_MASK;
+
+            // Handle an initial down.
+            //不论是点击、长按、滑动事件的第一个事件动作一定是ACTION_DOWN
+            //当是ACTION_DOWN时取消和清除所有的触摸目标，重置触摸状态
+            //TouchTarget是一个链标结构，链接了多个能够消费事件的子view
+            if (actionMasked == MotionEvent.ACTION_DOWN) {
+                 // ACTION_DOWN表示一次全新的事件序列开始，那么清除旧的
+                // TouchTarget（正常情况下TouchTarget在上一轮事件序列结束时会清
+                // 空，若此时仍存在，则需要先给这些TouchTarget派发ACTION_CANCEL事
+                // 件，然后再清除），重置触摸滚动等相关的状态和标识位。
+                // Throw away all previous state when starting a new touch gesture.
+                // The framework may have dropped the up or cancel event for the previous gesture
+                // due to an app switch, ANR, or some other state change.
+                cancelAndClearTouchTargets(ev);
+                resetTouchState();
+            }
+
+            // Check for interception.、
+            //检查拦截
+            final boolean intercepted;
+            /**
+            这里是ACTION_DOWN，mFirstTouchTarget为null，因为一遍递归还没走完，没有找到事件的消费的事件的View，也就是TouchTarget，为什么叫mFirstTouchTarget，是因为在多点触摸时这里的first指的是消费第一根手指落下事件的view
+            **/
+            if (actionMasked == MotionEvent.ACTION_DOWN
+                    || mFirstTouchTarget != null) {
+                // 判断child是否抢先调用了requestDisallowInterceptTouchEvent方法
+                final boolean disallowIntercept = (mGroupFlags &amp; FLAG_DISALLOW_INTERCEPT) != 0;
+                if (!disallowIntercept) {
+                    //因为这里分析的是ViewGroup中的事件分发，所以就会有涉及到子view调用requestDisallowInterceptTouchEvent，设置事件拦截
+                    // 再通过onInterceptTouchEvent方法判断（子类可重写）
+                    intercepted = onInterceptTouchEvent(ev);
+                    ev.setAction(action); // restore action in case it was changed
+                } else {
+                    intercepted = false;
+                }
+            } else {
+                // There are no touch targets and this action is not an initial down
+                // so this view group continues to intercept touches.
+                //如果不是ACTION_DOWN，并且子view没有消费（mFirstTouchTarget为null），就直接拦截
+
+            // If intercepted, start normal event dispatch. Also if there is already
+            // a view that is handling the gesture, do normal event dispatch.
+            if (intercepted || mFirstTouchTarget != null) {
+                ev.setTargetAccessibilityFocus(false);
+            }
+
+            // Check for cancelation.
+            //检查当前事件是否是ACTION_CANCEL事件，当前是ACTION_DOWN，canceled为false
+            final boolean canceled = resetCancelNextUpFlag(this)
+                    || actionMasked == MotionEvent.ACTION_CANCEL;
+
+            // Update list of touch targets for pointer down, if needed.
+            //如果支持多点触摸的话，需要将事件拆分给不同的TouchTargets,这里split = true
+            final boolean split = (mGroupFlags &amp; FLAG_SPLIT_MOTION_EVENTS) != 0;
+               // newTouchTarget用于保存新的派发目标
+            TouchTarget newTouchTarget = null;
+             // 标记在目标查找过程中是否已经对newTouchTarget进行过派发
+            boolean alreadyDispatchedToNewTouchTarget = false;
+            // 只有当非cancele且不拦截的情况才进行目标查找，否则直接跳到执行派发步骤。如果是
+    // 因为被拦截，那么还没有派发目标，则会由ViewGroup自己处理事件
+            if (!canceled &amp;&amp; !intercepted) {
+                //不是取消，并且没有拦截事件进入这里处理
+                // If the event is targeting accessibility focus we give it to the
+                // view that has accessibility focus and if it does not handle it
+                // we clear the flag and dispatch the event to all children as usual.
+                // We are looking up the accessibility focused host to avoid keeping
+                // state since these events are very rare.
+                View childWithAccessibilityFocus = ev.isTargetAccessibilityFocus()
+                        ? findChildWithAccessibilityFocus() : null;
+                //只有下面事件才会去找能够消费的子view，这里是ACTION_DOWN进if
+                if (actionMasked == MotionEvent.ACTION_DOWN
+                        || (split &amp;&amp; actionMasked == MotionEvent.ACTION_POINTER_DOWN)
+                        || actionMasked == MotionEvent.ACTION_HOVER_MOVE) {
+                /**
+                获取当前的MotionEvent的索引，因为是支持多点触摸，那么就需要知道当前的MotionEvent是由哪个触控点产生的，这个触控点的信息，肯定需要包含在这个MotionEvent中的，就在action中的9-16位，action是32位的int，将9-16位取出，再右移8位，得到的就是这个actionIndex,当前分析单点触摸，actionIndex = 0，若是第二根手指按下，actionIndex =1
+                */
+
+                    final int actionIndex = ev.getActionIndex(); // always 0 for down
+                    //idBitsToAssign = 1
+                      // 通过触摸点索引取得触摸点ID，然后左移x位（x=ID值）
+                    final int idBitsToAssign = split ? 1 &lt;&lt; ev.getPointerId(actionIndex)
+                            : TouchTarget.ALL_POINTER_IDS;
+
+                    // Clean up earlier touch targets for this pointer id in case they
+                    // have become out of sync.
+                      // 遍历mFirstTouchTarget链表，进行清理。若有TouchTarget设置了此触摸点ID，
+            // 则将其移除该ID，若移除后的TouchTarget已经没有触摸点ID了，那么接着移除
+            // 这个TouchTarget。
+                    removePointersFromTouchTargets(idBitsToAssign);
+
+                    final int childrenCount = mChildrenCount;
+                    if (newTouchTarget == null &amp;&amp; childrenCount != 0) {
+                        final float x = ev.getX(actionIndex);
+                        final float y = ev.getY(actionIndex);
+                        // Find a child that can receive the event.
+                        // Scan children from front to back.
+                        //一个ViewGroup会包含多个view，那么先找哪个子view去进行事件的传递呢？根据人的理解因该是最上层的view响应，那么这里先根据z轴的值进行排序
+                        //若是当前的子view中没有设置z轴的话，这里的preorderedList位null，这里就为null
+                        final ArrayList&lt;View&gt; preorderedList = buildTouchDispatchChildList();
+                        final boolean customOrder = preorderedList == null
+                                &amp;&amp; isChildrenDrawingOrderEnabled();
+                        final View[] children = mChildren;
+                        /**
+                        这里就是循环查找，从外往里扫描，可以理解为，一个ViewGroup中有多个子view，从布局中的后写的view开始扫描，因为在很多布局的设置中，后写的view会覆盖遮挡到前面的view，那么在上面的view应该是要先响应点击事件的
+                        */
+                        for (int i = childrenCount - 1; i &gt;= 0; i--) {
+                            //结合前面查到的z轴排序的结合获取view，这里的preorderedList是null，所以正常获取在child集合中的下标位置
+                            final int childIndex = getAndVerifyPreorderedIndex(
+                                    childrenCount, i, customOrder);
+                            final View child = getAndVerifyPreorderedView(
+                                    preorderedList, children, childIndex);
+
+                            // If there is a view that has accessibility focus we want it
+                            // to get the event first and if not handled we will perform a
+                            // normal dispatch. We may do a double iteration but this is
+                            // safer given the timeframe.
+                            //因为这里是ACTION_DOWN，第一次的循环还没走完childWithAccessibilityFocus为null
+                            if (childWithAccessibilityFocus != null) {
+                                if (childWithAccessibilityFocus != child) {
+                                    continue;
+                                }
+                                childWithAccessibilityFocus = null;
+                                i = childrenCount - 1;
+                            }
+                            //判断当前的child能否接受事件，并且按下的坐标点位于child区域内，只要一个不符合跳出循环，查找下一个view
+                            if (!canViewReceivePointerEvents(child)
+                                    || !isTransformedTouchPointInView(x, y, child, null)) {
+                                ev.setTargetAccessibilityFocus(false);
+                                continue;
+                            }
+                            /**
+                            这里是通过mFirstTouchTarget来对比，如果之前已经有view消费了事件，那么mFirstTouchTarget必定是不为null的，那么事件应该是第二根手指落下的事件，这里就是对比当前的view和mFirstTouchTarget中的view比较，如果是同一个view，就复用，只是把pointerIdBits更新下
+                            newTouchTarget为null，因为我们还没有view消费事件，mFirstTouchTarget还为null
+                            */
+                            newTouchTarget = getTouchTarget(child);
+                             // 遍历mFirstTouchTarget链表，查找该child对应的TouchTarget。
+                    // 如果之前已经有触摸点落于该child中且消费了事件，这次新的触摸点也落于该child中，
+                    // 那么就会找到之前保存的TouchTarget。
+                            if (newTouchTarget != null) {
+                                // Child is already receiving touch within its bounds.
+                                // Give it the new pointer in addition to the ones it is handling.
+                                 // 派发目标已经存在，只要给TouchTarget的触摸点ID集合添加新的
+                        // ID即可，然后退出子view遍历。
+                                newTouchTarget.pointerIdBits |= idBitsToAssign;
+                                break;
+                            }
+
+                            resetCancelNextUpFlag(child);
+                            //这里才是真正去分发事件的地方，也就是在这个方法里进行下一次递归
+                            if (dispatchTransformedTouchEvent(ev, false, child, idBitsToAssign)) {
+                                /**
+                                如果方法进入这里，说明子view消费了事件，当前的递归层级view为MyViewgrou，所以dispatchTransformedTouchEvent的向下调用就是，MyView的dipatchTouchEvent,MyView消费ACTION_DOWN事件，递归跳出，当前的ViewGroup就是MyViewGroup
+                                */
+                                // Child wants to receive touch within its bounds.
+                                mLastTouchDownTime = ev.getDownTime();
+                                if (preorderedList != null) {
+                                    // childIndex points into presorted list, find original index
+                                    for (int j = 0; j &lt; childrenCount; j++) {
+                                        if (children[childIndex] == mChildren[j]) {
+                                            mLastTouchDownIndex = j;
+                                            break;
+                                        }
+                                    }
+                                } else {
+                                    mLastTouchDownIndex = childIndex;
+                                }
+                                mLastTouchDownX = ev.getX();
+                                mLastTouchDownY = ev.getY();
+                                //这里就给mFirstTouchTarget设置值，也就是有事件消费的View了，并将其设置为新的头节点
+                                newTouchTarget = addTouchTarget(child, idBitsToAssign);
+                                //是否已经消费标志
+                                alreadyDispatchedToNewTouchTarget = true;
+                                //这的循环层级是在MyViewGroup中，找到消费的子view，就不再找了，跳出循环
+                                break;
+                            }
+
+                            // The accessibility focus didn't handle the event, so clear
+                            // the flag and do a normal dispatch to all children.
+                            ev.setTargetAccessibilityFocus(false);
+                        }
+                        if (preorderedList != null) preorderedList.clear();
+                    }
+                    // 检查是否找到派发目标
+                    if (newTouchTarget == null &amp;&amp; mFirstTouchTarget != null) {
+                        // Did not find a child to receive the event.
+                        // Assign the pointer to the least recently added target.
+                        // 若没有找到派发目标（没有命中child或命中的child不消费），但是存在
+                // 旧的TouchTarget，那么将该事件派发给最开始添加的那个TouchTarget，
+                // 多点触摸情况下有可能这个事件是它想要的。
+                        newTouchTarget = mFirstTouchTarget;
+                        while (newTouchTarget.next != null) {
+                            newTouchTarget = newTouchTarget.next;
+                        }
+                        newTouchTarget.pointerIdBits |= idBitsToAssign;
+                    }
+                }
+            }
+            //如果没有子view消费事件，mFirstTouchTarget为null，但是这里MyView消费了，所以mFirstTouchTarget不为null
+            // Dispatch to touch targets.
+            if (mFirstTouchTarget == null) {
+                // No touch targets so treat this as an ordinary view.
+                //如果子view没有能消费的，那么就把事件分配给自己，看看自己能消费吗
+                handled = dispatchTransformedTouchEvent(ev, canceled, null,
+                        TouchTarget.ALL_POINTER_IDS);
+            } else {
+                // Dispatch to touch targets, excluding the new touch target if we already
+                // dispatched to it.  Cancel touch targets if necessary.
+                TouchTarget predecessor = null;
+                TouchTarget target = mFirstTouchTarget;
+                //判断当前的alreadyDispatchedToNewTouchTarget处理标识和newTouchTarget和mFirstTouchTarget是否为同一个对象，这是里直接走if
+                while (target != null) {
+                    final TouchTarget next = target.next;
+                    if (alreadyDispatchedToNewTouchTarget &amp;&amp; target == newTouchTarget) {
+                        handled = true;
+                    } else {
+                        final boolean cancelChild = resetCancelNextUpFlag(target.child)
+                                || intercepted;
+                        if (dispatchTransformedTouchEvent(ev, cancelChild,
+                                target.child, target.pointerIdBits)) {
+                            handled = true;
+                        }
+                        if (cancelChild) {
+                            if (predecessor == null) {
+                                mFirstTouchTarget = next;
+                            } else {
+                                predecessor.next = next;
+                            }
+                            target.recycle();
+                            target = next;
+                            continue;
+                        }
+                    }
+                    predecessor = target;
+                    target = next;
+                }
+            }
+
+            // Update list of touch targets for pointer up or cancel, if needed.
+            if (canceled
+                    || actionMasked == MotionEvent.ACTION_UP
+                    || actionMasked == MotionEvent.ACTION_HOVER_MOVE) {
+                resetTouchState();
+            } else if (split &amp;&amp; actionMasked == MotionEvent.ACTION_POINTER_UP) {
+                final int actionIndex = ev.getActionIndex();
+                final int idBitsToRemove = 1 &lt;&lt; ev.getPointerId(actionIndex);
+                removePointersFromTouchTargets(idBitsToRemove);
+            }
+        }
+
+        if (!handled &amp;&amp; mInputEventConsistencyVerifier != null) {
+            mInputEventConsistencyVerifier.onUnhandledEvent(ev, 1);
+        }
+        //将结果返回给上一层调用者（父view，我们这里是MyViewGroup，它的父View是ConstraintLayout），之后的层层返回，跳出递归
+        return handled;
+    }
+</code></pre>
+<h3 id="action_move其他的事件就类似了">ACTION_MOVE，其他的事件就类似了</h3>
+<pre><code class="language-java"> @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (mInputEventConsistencyVerifier != null) {
+            mInputEventConsistencyVerifier.onTouchEvent(ev, 1);
+        }
+
+        // If the event targets the accessibility focused view and this is it, start
+        // normal event dispatch. Maybe a descendant is what will handle the click.
+        if (ev.isTargetAccessibilityFocus() &amp;&amp; isAccessibilityFocusedViewOrHost()) {
+            ev.setTargetAccessibilityFocus(false);
+        }
+        //
+        boolean handled = false;
+        //进行事件进行安全过滤，根据源码看基本上就是处理当view被遮挡时不响应事件
+        if (onFilterTouchEventForSecurity(ev)) {
+            final int action = ev.getAction();
+            /**
+            这里的&amp; MotionEvent.ACTION_MASK（取低8位），因为支持多点触摸，最大可响应的多点触摸32个点
+            第一个手指按下的事件：ACTION_DOWN
+            第二个手指按下的事件：ACTION_POINTER_DOWN
+            此时抬起一根手指的事件：ACTION_POINTER_UP
+            再抬起另外一根手指的事件：ACTION_UP
+            通过ev.getAction()得到值包含动作（低8位）、触摸索引点（9-16位）等，而不单单是上述的几种行为动作，所以不能通过if(ev.getAction()==ACTION_POINTER_DOWN)这样对比，因为ACTION_POINTER_DOWN只是ev.getAction()中的一部分
+            那么现在需要知道当前MotionEvent的action是何种类型，就需要从ev.getAction()返回的值里剥离出来，所以加了&amp; MotionEvent.ACTION_MASK过滤其他信息，只取低8位，此举与ev.getActionMasked等效。
+            **/
+            final int actionMasked = action &amp; MotionEvent.ACTION_MASK;
+
+            // Handle an initial down.
+            //这里是ACTION_MOVE事件，所以不会清除之前的事件状态什么的，也就是mFirstTouchTarget保存有ACTION_DOWN的处理view
+            if (actionMasked == MotionEvent.ACTION_DOWN) {
+                // Throw away all previous state when starting a new touch gesture.
+                // The framework may have dropped the up or cancel event for the previous gesture
+                // due to an app switch, ANR, or some other state change.
+                cancelAndClearTouchTargets(ev);
+                resetTouchState();
+            }
+
+            // Check for interception.、
+            //检查拦截
+            final boolean intercepted;
+            /**
+            因为已经有view响应事件ACTION_DWON,所以mFirstTouchTarget ！= null
+            **/
+            if (actionMasked == MotionEvent.ACTION_DOWN
+                    || mFirstTouchTarget != null) {
+                final boolean disallowIntercept = (mGroupFlags &amp; FLAG_DISALLOW_INTERCEPT) != 0;
+                if (!disallowIntercept) {
+                    //因为这里分析的是ViewGroup中的事件分发，所以就会有涉及到子view调用requestDisallowInterceptTouchEvent，设置事件拦截
+                    intercepted = onInterceptTouchEvent(ev);
+                    ev.setAction(action); // restore action in case it was changed
+                } else {
+                    intercepted = false;
+                }
+            } else {
+                // There are no touch targets and this action is not an initial down
+                // so this view group continues to intercept touches.
+                //如果不是ACTION_DOWN，并且子view没有消费（mFirstTouchTarget为null），就直接拦截
+                intercepted = true;
+            }
+
+            // If intercepted, start normal event dispatch. Also if there is already
+            // a view that is handling the gesture, do normal event dispatch.
+            if (intercepted || mFirstTouchTarget != null) {
+                ev.setTargetAccessibilityFocus(false);
+            }
+
+            // Check for cancelation.
+            //检查当前事件是否是ACTION_CANCEL事件，当前是ACTION_MOVE，canceled为false
+            final boolean canceled = resetCancelNextUpFlag(this)
+                    || actionMasked == MotionEvent.ACTION_CANCEL;
+
+            // Update list of touch targets for pointer down, if needed.
+            //如果支持多点触摸的话，需要将事件拆分给不同的TouchTargets,这里split = true
+            final boolean split = (mGroupFlags &amp; FLAG_SPLIT_MOTION_EVENTS) != 0;
+            TouchTarget newTouchTarget = null;
+            boolean alreadyDispatchedToNewTouchTarget = false;
+            if (!canceled &amp;&amp; !intercepted) {
+                //不是取消，并且没有拦截事件进入这里处理
+                // If the event is targeting accessibility focus we give it to the
+                // view that has accessibility focus and if it does not handle it
+                // we clear the flag and dispatch the event to all children as usual.
+                // We are looking up the accessibility focused host to avoid keeping
+                // state since these events are very rare.
+                View childWithAccessibilityFocus = ev.isTargetAccessibilityFocus()
+                        ? findChildWithAccessibilityFocus() : null;
+                //只有下面事件才会去找能够消费的子view，这里是ACTION_MOVE所以下面的if不会走
+                if (actionMasked == MotionEvent.ACTION_DOWN
+                        || (split &amp;&amp; actionMasked == MotionEvent.ACTION_POINTER_DOWN)
+                        || actionMasked == MotionEvent.ACTION_HOVER_MOVE) {
+                    final int actionIndex = ev.getActionIndex(); // always 0 for down
+                    //idBitsToAssign = 1
+                    final int idBitsToAssign = split ? 1 &lt;&lt; ev.getPointerId(actionIndex)
+                            : TouchTarget.ALL_POINTER_IDS;
+                    // Clean up earlier touch targets for this pointer id in case they
+                    // have become out of sync.
+                    removePointersFromTouchTargets(idBitsToAssign);
+
+                    final int childrenCount = mChildrenCount;
+                    if (newTouchTarget == null &amp;&amp; childrenCount != 0) {
+                        final float x = ev.getX(actionIndex);
+                        final float y = ev.getY(actionIndex);
+                        // Find a child that can receive the event.
+                        // Scan children from front to back.
+                        //一个ViewGroup会包含多个view，那么先找哪个子view去进行事件的传递呢？根据人的理解因该是最上层的view响应，那么这里先根据z轴的值进行排序
+                        //若是当前的子view中没有设置z轴的话，这里的preorderedList位null，这里就为null
+                        final ArrayList&lt;View&gt; preorderedList = buildTouchDispatchChildList();
+                        final boolean customOrder = preorderedList == null
+                                &amp;&amp; isChildrenDrawingOrderEnabled();
+                        final View[] children = mChildren;
+                        /**
+                        这里就是循环查找，从外往里扫描，可以理解为，一个ViewGroup中有多个子view，从布局中的后写的view开始扫描，因为在很多布局的设置中，后写的view会覆盖遮挡到前面的view，那么在上面的view应该是要先响应点击事件的
+                        */
+                        for (int i = childrenCount - 1; i &gt;= 0; i--) {
+                            //结合前面查到的z轴排序的结合获取view，这里的preorderedList是null，所以正常获取在child集合中的下标位置
+                            final int childIndex = getAndVerifyPreorderedIndex(
+                                    childrenCount, i, customOrder);
+                            final View child = getAndVerifyPreorderedView(
+                                    preorderedList, children, childIndex);
+
+                            // If there is a view that has accessibility focus we want it
+                            // to get the event first and if not handled we will perform a
+                            // normal dispatch. We may do a double iteration but this is
+                            // safer given the timeframe.
+                            //因为这里是ACTION_DOWN，第一次的循环还没走完childWithAccessibilityFocus为null
+                            if (childWithAccessibilityFocus != null) {
+                                if (childWithAccessibilityFocus != child) {
+                                    continue;
+                                }
+                                childWithAccessibilityFocus = null;
+                                i = childrenCount - 1;
+                            }
+                            //判断当前的child能否接受事件，并且按下的坐标点位于child区域内，只要一个不符合跳出循环，查找下一个view
+                            if (!canViewReceivePointerEvents(child)
+                                    || !isTransformedTouchPointInView(x, y, child, null)) {
+                                ev.setTargetAccessibilityFocus(false);
+                                continue;
+                            }
+                            /**
+                            这里是通过mFirstTouchTarget来对比，如果之前已经有view消费了事件，那么mFirstTouchTarget必定是不为null的，那么事件应该是第二根手指落下的事件，这里就是对比当前的view和mFirstTouchTarget中的view比较，如果是同一个view，就复用，只是把pointerIdBits更新下
+                            newTouchTarget为null，因为我们还没有view消费事件，mFirstTouchTarget还为null
+                            */
+                            newTouchTarget = getTouchTarget(child);
+                            if (newTouchTarget != null) {
+                                // Child is already receiving touch within its bounds.
+                                // Give it the new pointer in addition to the ones it is handling.
+                                newTouchTarget.pointerIdBits |= idBitsToAssign;
+                                break;
+                            }
+
+                            resetCancelNextUpFlag(child);
+                            //这里才是真正去分发事件的地方，也就是在这个方法里进行下一次递归
+                            if (dispatchTransformedTouchEvent(ev, false, child, idBitsToAssign)) {
+                                /**
+                                如果方法进入这里，说明子view消费了事件，当前的递归层级view为MyViewgrou，所以dispatchTransformedTouchEvent的向下调用就是，MyView的dipatchTouchEvent,MyView消费ACTION_DOWN事件，递归跳出，当前的ViewGroup就是MyViewGroup
+                                */
+                                // Child wants to receive touch within its bounds.
+                                mLastTouchDownTime = ev.getDownTime();
+                                if (preorderedList != null) {
+                                    // childIndex points into presorted list, find original index
+                                    for (int j = 0; j &lt; childrenCount; j++) {
+                                        if (children[childIndex] == mChildren[j]) {
+                                            mLastTouchDownIndex = j;
+                                            break;
+                                        }
+                                    }
+                                } else {
+                                    mLastTouchDownIndex = childIndex;
+                                }
+                                mLastTouchDownX = ev.getX();
+                                mLastTouchDownY = ev.getY();
+                                //这里就给mFirstTouchTarget设置值，也就是有事件消费的View了
+                                newTouchTarget = addTouchTarget(child, idBitsToAssign);
+                                //是否已经消费标志
+                                alreadyDispatchedToNewTouchTarget = true;
+                                //这的循环层级是在MyViewGroup中，找到消费的子view，就不再找了，跳出循环
+                                break;
+                            }
+
+                            // The accessibility focus didn't handle the event, so clear
+                            // the flag and do a normal dispatch to all children.
+                            ev.setTargetAccessibilityFocus(false);
+                        }
+                        if (preorderedList != null) preorderedList.clear();
+                    }
+
+                    if (newTouchTarget == null &amp;&amp; mFirstTouchTarget != null) {
+                        // Did not find a child to receive the event.
+                        // Assign the pointer to the least recently added target.
+                        newTouchTarget = mFirstTouchTarget;
+                        while (newTouchTarget.next != null) {
+                            newTouchTarget = newTouchTarget.next;
+                        }
+                        newTouchTarget.pointerIdBits |= idBitsToAssign;
+                    }
+                }
+            }
+            //已经有View消费事件了，mFirstTouchTarget不为null走else，相当于一个事件链中的事件都会交由一个view进行处理！！！
+            // Dispatch to touch targets.
+            if (mFirstTouchTarget == null) {
+                // No touch targets so treat this as an ordinary view.
+                //如果子view没有能消费的，那么就把事件分配给自己，看看自己能消费吗
+                handled = dispatchTransformedTouchEvent(ev, canceled, null,
+                        TouchTarget.ALL_POINTER_IDS);
+            } else {
+                // Dispatch to touch targets, excluding the new touch target if we already
+                // dispatched to it.  Cancel touch targets if necessary.
+                TouchTarget predecessor = null;
+                TouchTarget target = mFirstTouchTarget;
+                //因为上面的if没有走，所以alreadyDispatchedToNewTouchTarget为false，走else
+                while (target != null) {
+                    final TouchTarget next = target.next;
+                    if (alreadyDispatchedToNewTouchTarget &amp;&amp; target == newTouchTarget) {
+                        handled = true;
+                    } else {
+                        /**
+                        一般只有ViewGroup拦截了事件，cancelChild为true，同时之前消费事件的view会收到ACTION_CANCEL事件，
+                        这里的cancelChild为false
+                        */
+                        final boolean cancelChild = resetCancelNextUpFlag(target.child)
+                                || intercepted;
+                        //事件分发，可以看到target就是mFirstTouchTarget，还是之前响应事件的那个view
+                        if (dispatchTransformedTouchEvent(ev, cancelChild,
+                                target.child, target.pointerIdBits)) {
+                            handled = true;
+                        }
+                        if (cancelChild) {
+                            if (predecessor == null) {
+                                mFirstTouchTarget = next;
+                            } else {
+                                predecessor.next = next;
+                            }
+                            target.recycle();
+                            target = next;
+                            continue;
+                        }
+                    }
+                    predecessor = target;
+                    target = next;
+                }
+            }
+
+            // Update list of touch targets for pointer up or cancel, if needed.
+            if (canceled
+                    || actionMasked == MotionEvent.ACTION_UP
+                    || actionMasked == MotionEvent.ACTION_HOVER_MOVE) {
+                resetTouchState();
+            } else if (split &amp;&amp; actionMasked == MotionEvent.ACTION_POINTER_UP) {
+                final int actionIndex = ev.getActionIndex();
+                final int idBitsToRemove = 1 &lt;&lt; ev.getPointerId(actionIndex);
+                removePointersFromTouchTargets(idBitsToRemove);
+            }
+        }
+
+        if (!handled &amp;&amp; mInputEventConsistencyVerifier != null) {
+            mInputEventConsistencyVerifier.onUnhandledEvent(ev, 1);
+        }
+        //将结果返回给上一层调用者（父view，我们这里是MyViewGroup，它的父View是ConstraintLayout），之后的层层返回，跳出递归
+        return handled;
+    }
+</code></pre>
+<h3 id="dispatchtransformedtouchevent">dispatchTransformedTouchEvent</h3>
+<pre><code class="language-java">  /**
+    * 处理事件分发
+     * Transforms a motion event into the coordinate space of a particular child view,
+     * filters out irrelevant pointer ids, and overrides its action if necessary.
+     * If child is null, assumes the MotionEvent will be sent to this ViewGroup instead.
+     */
+    private boolean dispatchTransformedTouchEvent(MotionEvent event, boolean cancel,
+            View child, int desiredPointerIdBits) {
+        final boolean handled;
+
+        // Canceling motions is a special case.  We don't need to perform any transformations
+        // or filtering.  The important part is the action, not the contents.
+        //取消事件
+        final int oldAction = event.getAction();
+        if (cancel || oldAction == MotionEvent.ACTION_CANCEL) {
+            event.setAction(MotionEvent.ACTION_CANCEL);
+            if (child == null) {
+                handled = super.dispatchTouchEvent(event);
+            } else {
+                handled = child.dispatchTouchEvent(event);
+            }
+            event.setAction(oldAction);
+            return handled;
+        }
+
+        // Calculate the number of pointers to deliver.
+        //多点触控相关，oldPointerIdBits=1，desiredPointerIdBits=1，newPointerIdBits=1，说明事件不需要拆分，因为这里没有多点触控
+        final int oldPointerIdBits = event.getPointerIdBits();
+        final int newPointerIdBits = oldPointerIdBits &amp; desiredPointerIdBits;
+
+        // If for some reason we ended up in an inconsistent state where it looks like we
+        // might produce a motion event with no pointers in it, then drop the event.
+        if (newPointerIdBits == 0) {
+            return false;
+        }
+
+        // If the number of pointers is the same and we don't need to perform any fancy
+        // irreversible transformations, then we can reuse the motion event for this
+        // dispatch as long as we are careful to revert any changes we make.
+        // Otherwise we need to make a copy.
+        final MotionEvent transformedEvent;
+        if (newPointerIdBits == oldPointerIdBits) {
+            if (child == null || child.hasIdentityMatrix()) {
+                //入股当前的ViewGroup没有子view，调用父类dispatchTouchEvent方法，自己进行处理
+                if (child == null) {
+                    handled = super.dispatchTouchEvent(event);
+                } else {
+                    final float offsetX = mScrollX - child.mLeft;
+                    final float offsetY = mScrollY - child.mTop;
+                    event.offsetLocation(offsetX, offsetY);
+                    /**
+                    调用child的dispatchTouchEvent，进入下一层级的递归，如果child也是ViewGroup那么继续往下，直到有消费或找到最后层级的View
+                    */
+                    handled = child.dispatchTouchEvent(event);
+
+                    event.offsetLocation(-offsetX, -offsetY);
+                }
+                return handled;
+            }
+            transformedEvent = MotionEvent.obtain(event);
+        } else {
+            //这里是多点触控的
+            transformedEvent = event.split(newPointerIdBits);
+        }
+
+        // Perform any necessary transformations and dispatch.
+        //如果上面没有return，那么将转换后的transformedEvent再次分发
+        if (child == null) {
+            handled = super.dispatchTouchEvent(transformedEvent);
+        } else {
+            final float offsetX = mScrollX - child.mLeft;
+            final float offsetY = mScrollY - child.mTop;
+            transformedEvent.offsetLocation(offsetX, offsetY);
+            if (! child.hasIdentityMatrix()) {
+                transformedEvent.transform(child.getInverseMatrix());
+            }
+
+            handled = child.dispatchTouchEvent(transformedEvent);
+        }
+
+        // Done.
+        transformedEvent.recycle();
+        return handled;
+    }
+</code></pre>
+<p>事件分发就是通过dispatchTouchEvent，onInterceptTouchEvent onTouchEvent只不过是用来处理事件的，通过递归函数调用，来确定事件处理对象<br>
+分析前面的几个结论：<br>
+1.如果一个view在ACTION_DOWN时没有消费事件，那么同一事件序列之后的ACTION_MOVE ACTION_UP都不会交由此view处理<br>
+ViewGroup是通过mFirstTouchTarget来确定事件处理view的，如果没有事件处理，那么这个mFirstTouchTarget为null，ViewGroup就会自己来处理，例如上面的布局层级中，如果MyView<br>
+没有处理事件，MyViewGroup处理了相应的事件，那么在判断mFirstTouchTarget自己就处理了，这是在MyViewGroup消费事件的前提下，如果都没有View消费事件，那么这个会返回到DecorView,DecorView中的mFirstTouchTargte为null根本就不会再往下分发了。</p>
+<p>2.如果一个view在ACTION_DOWN时消费了事件，那么同一事件序列之后的ACTION_MOVE ACTION-UP都由此view处理<br>
+事件分发处理中如果mFirstTouchTarget不为null，那么就让分发到的就是mFirstTouchTarget</p>
+<p>3.如果一个ViewGroup在一定条件下，拦截了ACTION_MOVE事件，那么此前消费事件的子view会收到一个ACTION_CANCEL事件，同时onInteceptTouchEvent在此事件序列不会再调用</p>
+<h2 id="touchtarget源码分析">TouchTarget源码分析</h2>
+<p><a href="https://juejin.cn/post/6844904065613201421">ViewGroup事件分发总结-TouchTarget</a></p>
+<pre><code class="language-java">private static final class TouchTarget {
+    // ···
+
+    // 消费事件的view
+    @UnsupportedAppUsage
+    public View child;
+
+    // child接收的触摸点的id集合
+    public int pointerIdBits;
+
+    // 指向链表的下一个节点
+    public TouchTarget next;
+    
+    // ···
+}
+</code></pre>
+<p>根据TouchTarget来看ViewGroup整体的事件分发，整个流程中只有事件序列开始或子序列开始时（ACTION_DOW或ACTION_POINTER_DOWN），会遍历子view，并将目标封装成TouchTarget保存在mFirstTouchTarget链表中，完成派发目标查找后，再遍历TouchTarget链表，依次进行事件派发。</p>
+<h3 id="附加问题当viewgroup在action_move时满足一定条件拦截子view的事件为什么onintercepttouchevent一旦返回true就再也不会被调用"><strong>附加问题：当ViewGroup在ACTION_MOVE时，满足一定条件，拦截子View的事件，为什么onInterceptTouchEvent一旦返回true，就再也不会被调用？</strong></h3>
+<p>注意intercepted，如果onInterceptTouchEvent返回true，那么会导致cancelChild为true，那么mFirstTouchTarget会进行mFirstTouchTarget = next操作，因为是单点触控，next节点是null，所以mFirstTouchTarget就被赋值为null，再看onInterceptTouchEvent的调用时机</p>
+<pre><code class="language-java">  if (actionMasked == MotionEvent.ACTION_DOWN
+                    || mFirstTouchTarget != null) {
+                // 判断child是否抢先调用了requestDisallowInterceptTouchEvent方法
+                final boolean disallowIntercept = (mGroupFlags &amp; FLAG_DISALLOW_INTERCEPT) != 0;
+                if (!disallowIntercept) {
+                    //因为这里分析的是ViewGroup中的事件分发，所以就会有涉及到子view调用requestDisallowInterceptTouchEvent，设置事件拦截
+                    // 再通过onInterceptTouchEvent方法判断（子类可重写）
+                    intercepted = onInterceptTouchEvent(ev);
+                    ev.setAction(action); // restore action in case it was changed
+                } else {
+                    intercepted = false;
+                }
+            } else {
+                // There are no touch targets and this action is not an initial down
+                // so this view group continues to intercept touches.
+                //如果不是ACTION_DOWN，并且子view没有消费（mFirstTouchTarget为null），就直接拦截
+                intercepted = true;
+            }
+</code></pre>
+<p>后续的事件不会是ACTION_DOWN，并且mFirstTouchTarget为null了，这里就会走else逻辑，调用不到onInterceptTouchEvent方法了。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li>
+<ul>
+<li><a href="#%E4%BA%8B%E4%BB%B6%E5%88%86%E5%8F%91%E6%B5%81%E7%A8%8B%E5%9B%BE">事件分发流程图</a></li>
+<li><a href="#%E4%B8%80%E4%BA%9B%E7%BB%93%E8%AE%BA">一些结论：</a></li>
+<li><a href="#action_down%E7%9A%84%E8%B0%83%E7%94%A8%E6%97%B6%E5%BA%8F%E5%9B%BE">ACTION_DOWN的调用时序图</a></li>
+</ul>
+</li>
+<li><a href="#activityjava"><strong>Activity.java</strong></a>
+<ul>
+<li><a href="#%E9%92%88%E5%AF%B9%E5%85%B7%E4%BD%93%E7%9A%84%E4%BA%8B%E4%BB%B6%E5%88%86%E6%9E%90%E5%9C%A8%E4%B8%8A%E9%9D%A2%E5%B1%82%E7%BA%A7%E6%A8%A1%E5%9E%8B%E7%9A%84%E6%83%85%E5%86%B5%E4%B8%8B%E5%A4%84%E7%90%86%E4%BA%8B%E4%BB%B6%E5%88%86%E6%9E%90%E8%BF%99%E9%87%8C%E4%BB%A5action_down%E5%BC%80%E5%A7%8B">针对具体的事件分析，在上面层级模型的情况下处理事件分析，这里以ACTION_DOWN开始：</a></li>
+<li><a href="#action_move%E5%85%B6%E4%BB%96%E7%9A%84%E4%BA%8B%E4%BB%B6%E5%B0%B1%E7%B1%BB%E4%BC%BC%E4%BA%86">ACTION_MOVE，其他的事件就类似了</a></li>
+<li><a href="#dispatchtransformedtouchevent">dispatchTransformedTouchEvent</a></li>
+</ul>
+</li>
+<li><a href="#touchtarget%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90">TouchTarget源码分析</a>
+<ul>
+<li><a href="#%E9%99%84%E5%8A%A0%E9%97%AE%E9%A2%98%E5%BD%93viewgroup%E5%9C%A8action_move%E6%97%B6%E6%BB%A1%E8%B6%B3%E4%B8%80%E5%AE%9A%E6%9D%A1%E4%BB%B6%E6%8B%A6%E6%88%AA%E5%AD%90view%E7%9A%84%E4%BA%8B%E4%BB%B6%E4%B8%BA%E4%BB%80%E4%B9%88onintercepttouchevent%E4%B8%80%E6%97%A6%E8%BF%94%E5%9B%9Etrue%E5%B0%B1%E5%86%8D%E4%B9%9F%E4%B8%8D%E4%BC%9A%E8%A2%AB%E8%B0%83%E7%94%A8"><strong>附加问题：当ViewGroup在ACTION_MOVE时，满足一定条件，拦截子View的事件，为什么onInterceptTouchEvent一旦返回true，就再也不会被调用？</strong></a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/android-huan-fu-de-shi-xian-yi-ji-xiang-ying-de-yuan-ma-fen-xi/">
+              <h3 class="post-title">
+                Android换肤的实现以及相应的源码分析
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

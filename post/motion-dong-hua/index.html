@@ -1,0 +1,750 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Motion动画 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1704441990587">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Motion动画 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="官方MotionLayout的教程
+1.在说动画实现之前先针对几个设置相关的属性解释一下
+&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;Motion..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1704441990587" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Motion动画
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-12-20
+              </span>
+              <span>
+                18 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1639909141494-44b46f0fb64f?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=2787&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p><a href="https://developer.android.com/codelabs/motion-layout?hl=zh-cn#0">官方MotionLayout的教程</a></p>
+<h2 id="1在说动画实现之前先针对几个设置相关的属性解释一下">1.在说动画实现之前先针对几个设置相关的属性解释一下</h2>
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;MotionScene xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;
+    xmlns:app=&quot;http://schemas.android.com/apk/res-auto&quot;&gt;
+
+    &lt;Transition
+        android:id=&quot;@+id/backward&quot;
+        app:constraintSetEnd=&quot;@+id/previous&quot;
+        app:constraintSetStart=&quot;@id/start&quot;
+        app:duration=&quot;1000&quot;&gt;
+
+        &lt;OnSwipe
+            app:dragDirection=&quot;dragLeft&quot;
+            app:touchAnchorSide=&quot;left&quot; /&gt;
+
+    &lt;/Transition&gt;
+
+    &lt;Transition
+        android:id=&quot;@+id/forward&quot;
+        app:constraintSetEnd=&quot;@id/next&quot;
+        app:constraintSetStart=&quot;@id/start&quot;&gt;
+
+        &lt;OnSwipe
+            app:dragDirection=&quot;dragRight&quot;
+            app:touchAnchorSide=&quot;right&quot; /&gt;
+
+    &lt;/Transition&gt;
+
+
+    &lt;ConstraintSet android:id=&quot;@+id/previous&quot;&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv0&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintStart_toStartOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv1&quot;
+            android:layout_width=&quot;0dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toStartOf=&quot;@id/iv2&quot;
+            app:layout_constraintStart_toEndOf=&quot;@id/iv0&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv2&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toEndOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv3&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintStart_toEndOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+    &lt;/ConstraintSet&gt;
+
+
+    &lt;ConstraintSet android:id=&quot;@+id/start&quot;&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv0&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toStartOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv1&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintStart_toStartOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv2&quot;
+            android:layout_width=&quot;0dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toStartOf=&quot;@id/iv3&quot;
+            app:layout_constraintStart_toEndOf=&quot;@id/iv1&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv3&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toEndOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv4&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintStart_toEndOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+    &lt;/ConstraintSet&gt;
+
+    &lt;ConstraintSet android:id=&quot;@+id/next&quot;&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv1&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toStartOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv2&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintStart_toStartOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv3&quot;
+            android:layout_width=&quot;0dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toStartOf=&quot;@id/iv4&quot;
+            app:layout_constraintStart_toEndOf=&quot;@id/iv2&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv4&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toEndOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+    &lt;/ConstraintSet&gt;
+&lt;/MotionScene&gt;
+</code></pre>
+<h3 id="针对上面的xml解释一些概念motionscene用于描述motionlayout动画流程以及相关设置的所有属性">针对上面的xml解释一些概念，MotionScene用于描述MotionLayout动画流程以及相关设置的所有属性</h3>
+<p>Transition定义了动画的开始和结束的状态，以及它持续的时间,它的属性包括：</p>
+<ul>
+<li>constraintSetStart动画的开始状态</li>
+<li>constraintSetEnd动画的结束状态</li>
+<li>duration动画的持续时间</li>
+<li>motionInterpolator差值器，数值变化的差值器，例如线性的变化，缓入缓存，缓入等等效果。<br>
+在一个MotionScene中可以有多个Transition的存在，用于实现在不同条件下的状态变化，它的组成包括有，OnSwipe,OnClick以及KeyFrameSet，下面我们来分别介绍它。<br>
+OnSwipe定义了在滑动时相关属性，它监听的是MotionLayout，而不是指定的id的视图，OnSwip相关的属性：</li>
+<li>touchAnchorId是所跟踪的视图，它通过移动来响应轻触操作，MotionLayout会将该视图保持与快速滑动的手机相同的距离</li>
+<li>touchAnchorSide:用于确定应该跟踪视图的哪一侧。对于要调整大小，遵循复杂路径或一侧的移动数据比另一侧快的视图很重要。</li>
+<li>dragDirection用于确定可对该动画效果产生影响的方向（上下左右）<br>
+OnClick定义了在点击发生时的响应条件</li>
+<li>clickAction，事件响应类型，包括有toggle（切换，也就是在开始和结束状态之间来回的切换，类如一个view冲左移动到右边，那边再点击一次，那么它会执行从右边到左边移动的效果，反复执行），transitionToStart和jumpToStart最终效果都是执行view到start状态上，区别就是有没有过度的过程，transitionToEnd和jumpToEnd类似。</li>
+<li>targetId，响应这个点击事件的View的id<br>
+KeyFrameSet是transition的子集，它包含有KeyPosition<br>
+KeyPosition是当需要进行复杂路径的Motion动画时使用进行某一进度时的状态，而KeyFrameSet就是这些点的集合，这些点就可以构成整个动画的路径状态，KeyPosition的属性：</li>
+<li>framePosition:是一个介于0到100的数字，它定义了动画中应用该KeyPosition的时间，其中1代表动画播放到1%的位置，99代表动画播放到99%的位置，</li>
+<li>motionTarget:是被该KeyPosition修改路径的视图</li>
+<li>keyPositionType:是该KeyPosition修改路径的方式。它可以是parentRelative,pathRelative或deltaRelative</li>
+<li>percentX|percentY是指在framePosition按多大百分比来修改路径(值介于0.0到1.0之间)允许使用负数和大于1的值</li>
+<li>curveFit默认情况下，MotionLayout 会将因修改路径而产生的所有角设为圆角，如果不需要这个弧度那么就是修改这个值，linear线性的变化，spline弧度变化。<br>
+其中keyPositionType三个值的区别就是它的坐标系的构成,下面是三个坐标系的表现形式：<br>
+<img src="https://arms-merchants.github.io//post-images/1639983068823.png" alt="" loading="lazy"><br>
+<img src="https://arms-merchants.github.io//post-images/1639983083187.png" alt="" loading="lazy"><br>
+<img src="https://arms-merchants.github.io//post-images/1639983090803.png" alt="" loading="lazy"><br>
+<a href="https://developer.android.com/codelabs/motion-layout?hl=zh-cn#5">官方关于keyPositionType的详细介绍</a></li>
+</ul>
+<hr>
+<h2 id="案例分析">案例分析</h2>
+<p><a href="https://github.com/Arms-merchants/Study/tree/main/UI/FlowView/app/src/main/java/com/arms/flowview/motion">「分析的案例的代码地址」</a></p>
+<h3 id="案例1侧滑菜单">案例1侧滑菜单</h3>
+<p>以往我们实现侧滑菜单时我们时通过DrawerLayout，实现DrawerListener，在回掉方法中动态修改view的状态和属性，现在我们通过结合DrawerLayout和MotionLayout来实现一个侧滑菜单：</p>
+<pre><code class="language-java">import android.content.Context
+import android.util.AttributeSet
+import android.view.View
+import androidx.constraintlayout.motion.widget.MotionLayout
+import androidx.drawerlayout.widget.DrawerLayout
+
+class DrawerContent @JvmOverloads constructor(
+    context: Context,
+    attrs: AttributeSet? = null,
+    defStyleAttr: Int = 0
+) : MotionLayout(context, attrs, defStyleAttr), DrawerLayout.DrawerListener {
+
+    override fun onDrawerSlide(drawerView: View, slideOffset: Float) {
+        //设置MotionLayout的变化进度
+        progress = slideOffset
+    }
+
+    override fun onDrawerOpened(drawerView: View) {
+    }
+
+    override fun onDrawerClosed(drawerView: View) {
+    }
+
+    override fun onDrawerStateChanged(newState: Int) {
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        //注册相应的监听
+        (parent as? DrawerLayout)?.addDrawerListener(this)
+    }
+}
+</code></pre>
+<p>定义Scene</p>
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;MotionScene xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;
+    xmlns:motion=&quot;http://schemas.android.com/apk/res-auto&quot;&gt;
+
+    &lt;Transition
+        motion:constraintSetEnd=&quot;@+id/end&quot;
+        motion:constraintSetStart=&quot;@id/start&quot;
+        motion:duration=&quot;250&quot;
+        motion:motionInterpolator=&quot;linear&quot;&gt;
+
+    &lt;/Transition&gt;
+
+    &lt;ConstraintSet android:id=&quot;@+id/start&quot;&gt;
+        &lt;Constraint
+            android:id=&quot;@+id/rv&quot;
+            android:layout_width=&quot;match_parent&quot;
+            android:layout_height=&quot;match_parent&quot;
+            motion:layout_constraintStart_toStartOf=&quot;parent&quot; /&gt;
+
+
+    &lt;/ConstraintSet&gt;
+
+    &lt;ConstraintSet android:id=&quot;@+id/end&quot;&gt;
+        &lt;Constraint
+            android:id=&quot;@+id/rv&quot;
+            android:layout_width=&quot;match_parent&quot;
+            android:layout_height=&quot;match_parent&quot;
+            android:layout_marginStart=&quot;180dp&quot;
+            android:scaleX=&quot;0.8&quot;
+            android:scaleY=&quot;0.8&quot;
+            motion:layout_constraintStart_toStartOf=&quot;parent&quot; /&gt;
+    &lt;/ConstraintSet&gt;
+&lt;/MotionScene&gt;
+</code></pre>
+<p>这里可以看到我们的Transition是没有设置触发条件的，它就是通过progress来确定当前的动画的进度，变化效果就是在距离Parent的start的0-180dp的范围内变化，并且伴随有x轴和y的缩放，缩放范围1-0.8，在xml中的使用：</p>
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;androidx.drawerlayout.widget.DrawerLayout xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;
+    xmlns:app=&quot;http://schemas.android.com/apk/res-auto&quot;
+    android:id=&quot;@+id/drawerlayout&quot;
+    android:layout_width=&quot;match_parent&quot;
+    android:layout_height=&quot;match_parent&quot;&gt;
+
+
+    &lt;com.arms.flowview.motion.DrawerContent
+        android:layout_width=&quot;match_parent&quot;
+        android:layout_height=&quot;match_parent&quot;
+        app:layoutDescription=&quot;@xml/fragemnt_motion_swipe_content_scene&quot;&gt;
+
+        &lt;androidx.recyclerview.widget.RecyclerView
+            android:id=&quot;@+id/rv&quot;
+            android:layout_width=&quot;match_parent&quot;
+            android:layout_height=&quot;match_parent&quot;
+            app:layoutManager=&quot;androidx.recyclerview.widget.LinearLayoutManager&quot; /&gt;
+
+    &lt;/com.arms.flowview.motion.DrawerContent&gt;
+
+
+    &lt;RelativeLayout
+        android:layout_width=&quot;180dp&quot;
+        android:layout_height=&quot;match_parent&quot;
+        android:layout_gravity=&quot;start&quot;&gt;
+
+        &lt;TextView
+            android:layout_width=&quot;180dp&quot;
+            android:layout_height=&quot;match_parent&quot;
+            android:background=&quot;@color/black&quot;
+            android:gravity=&quot;center&quot;
+            android:text=&quot;123123&quot;
+            android:textColor=&quot;@color/white&quot;
+            android:textSize=&quot;20sp&quot; /&gt;
+
+    &lt;/RelativeLayout&gt;
+
+&lt;/androidx.drawerlayout.widget.DrawerLayout&gt;
+</code></pre>
+<p>这样我们就实现了一个带有侧滑菜单并且主视图内容有缩放的效果。</p>
+<h3 id="效果2">效果2</h3>
+<p><img src="https://arms-merchants.github.io//post-images/1639986956494.gif" alt="" loading="lazy"><br>
+先分析当前的动画效果，向右滑动时，整体右移，视图1移出屏幕，视图2宽度缩小移动到视图1的位置，<br>
+视图3放大移动到视图2的位置，屏幕外的视图4移动到屏幕内视图3的位置，向左滑动类似，左右滑动都需要处理反向已经在屏幕外的视图，所以视图的总数是5。<br>
+动画的Sence:</p>
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;MotionScene xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;
+    xmlns:app=&quot;http://schemas.android.com/apk/res-auto&quot;&gt;
+
+    &lt;Transition
+        android:id=&quot;@+id/backward&quot;
+        app:constraintSetEnd=&quot;@+id/previous&quot;
+        app:constraintSetStart=&quot;@id/start&quot;
+        app:duration=&quot;1000&quot;&gt;
+        &lt;OnSwipe
+            app:dragDirection=&quot;dragLeft&quot;
+            app:touchAnchorSide=&quot;left&quot; /&gt;
+    &lt;/Transition&gt;
+
+    &lt;Transition
+        android:id=&quot;@+id/forward&quot;
+        app:constraintSetEnd=&quot;@id/next&quot;
+        app:constraintSetStart=&quot;@id/start&quot;&gt;
+
+        &lt;OnSwipe
+            app:dragDirection=&quot;dragRight&quot;
+            app:touchAnchorSide=&quot;right&quot; /&gt;
+
+    &lt;/Transition&gt;
+
+
+    &lt;ConstraintSet android:id=&quot;@+id/previous&quot;&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv0&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintStart_toStartOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv1&quot;
+            android:layout_width=&quot;0dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toStartOf=&quot;@id/iv2&quot;
+            app:layout_constraintStart_toEndOf=&quot;@id/iv0&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv2&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toEndOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv3&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintStart_toEndOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+    &lt;/ConstraintSet&gt;
+
+
+    &lt;ConstraintSet android:id=&quot;@+id/start&quot;&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv0&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toStartOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv1&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintStart_toStartOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv2&quot;
+            android:layout_width=&quot;0dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toStartOf=&quot;@id/iv3&quot;
+            app:layout_constraintStart_toEndOf=&quot;@id/iv1&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv3&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toEndOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv4&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintStart_toEndOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+    &lt;/ConstraintSet&gt;
+
+    &lt;ConstraintSet android:id=&quot;@+id/next&quot;&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv1&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toStartOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv2&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintStart_toStartOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv3&quot;
+            android:layout_width=&quot;0dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toStartOf=&quot;@id/iv4&quot;
+            app:layout_constraintStart_toEndOf=&quot;@id/iv2&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+        &lt;Constraint
+            android:id=&quot;@id/iv4&quot;
+            android:layout_width=&quot;60dp&quot;
+            android:layout_height=&quot;200dp&quot;
+            app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+            app:layout_constraintEnd_toEndOf=&quot;parent&quot;
+            app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+    &lt;/ConstraintSet&gt;
+&lt;/MotionScene&gt;
+</code></pre>
+<p>这里面包含了三组的状态，分别对应了起始状态Start，向右滑动的Next状态，向左滑动的后的previous状态,当每次状态变化执行后，那么相应的状态会重置为Start，但是view的位置是已经发生了变化的，这也就是为什么能够用三个状态来实现对应效果的原因，Constraint所使用的id，应该就是为了在状态第一次生效时确定view的。<br>
+对应的布局:</p>
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt;
+&lt;androidx.constraintlayout.motion.widget.MotionLayout xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;
+    xmlns:app=&quot;http://schemas.android.com/apk/res-auto&quot;
+    android:layout_width=&quot;match_parent&quot;
+    android:layout_height=&quot;match_parent&quot;
+    app:layoutDescription=&quot;@xml/fragment_motion_image_scene&quot;&gt;
+
+    &lt;ImageView
+        android:id=&quot;@+id/iv_back&quot;
+        android:layout_width=&quot;match_parent&quot;
+        android:layout_height=&quot;match_parent&quot;
+        android:src=&quot;@drawable/dm1&quot;
+        android:scaleType=&quot;centerCrop&quot;
+        /&gt;
+
+    &lt;ImageView
+        android:id=&quot;@+id/iv0&quot;
+        android:layout_width=&quot;60dp&quot;
+        android:layout_height=&quot;200dp&quot;
+        android:scaleType=&quot;centerCrop&quot;
+        android:src=&quot;@drawable/dm4&quot;
+        app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+        app:layout_constraintEnd_toStartOf=&quot;parent&quot;
+        app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+    &lt;ImageView
+        android:id=&quot;@+id/iv1&quot;
+        android:layout_width=&quot;60dp&quot;
+        android:layout_height=&quot;200dp&quot;
+        android:scaleType=&quot;centerCrop&quot;
+        android:src=&quot;@drawable/dm5&quot;
+        app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+        app:layout_constraintStart_toStartOf=&quot;parent&quot;
+        app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+
+    &lt;ImageView
+        android:id=&quot;@+id/iv2&quot;
+        android:layout_width=&quot;0dp&quot;
+        android:layout_height=&quot;200dp&quot;
+        android:scaleType=&quot;centerCrop&quot;
+        android:src=&quot;@drawable/dm1&quot;
+        app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+        app:layout_constraintEnd_toStartOf=&quot;@id/iv3&quot;
+        app:layout_constraintStart_toEndOf=&quot;@id/iv1&quot;
+        app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+    &lt;ImageView
+        android:id=&quot;@+id/iv3&quot;
+        android:layout_width=&quot;60dp&quot;
+        android:layout_height=&quot;200dp&quot;
+        android:scaleType=&quot;centerCrop&quot;
+        android:src=&quot;@drawable/dm2&quot;
+        app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+        app:layout_constraintEnd_toEndOf=&quot;parent&quot;
+        app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+    &lt;ImageView
+        android:id=&quot;@+id/iv4&quot;
+        android:layout_width=&quot;60dp&quot;
+        android:layout_height=&quot;200dp&quot;
+        android:scaleType=&quot;centerCrop&quot;
+        android:src=&quot;@drawable/dm3&quot;
+        app:layout_constraintBottom_toBottomOf=&quot;parent&quot;
+        app:layout_constraintStart_toEndOf=&quot;parent&quot;
+        app:layout_constraintTop_toTopOf=&quot;parent&quot; /&gt;
+
+    &lt;androidx.constraintlayout.helper.widget.Carousel
+        android:id=&quot;@+id/carousel&quot;
+        android:layout_width=&quot;wrap_content&quot;
+        android:layout_height=&quot;wrap_content&quot;
+        app:carousel_backwardTransition=&quot;@id/backward&quot;
+        app:carousel_firstView=&quot;@id/iv2&quot;
+        app:carousel_forwardTransition=&quot;@id/forward&quot;
+        app:carousel_infinite=&quot;true&quot;
+        app:carousel_nextState=&quot;@id/next&quot;
+        app:carousel_previousState=&quot;@id/previous&quot;
+        app:constraint_referenced_ids=&quot;iv0,iv1,iv2,iv3,iv4&quot; /&gt;
+
+&lt;/androidx.constraintlayout.motion.widget.MotionLayout&gt;
+</code></pre>
+<p>Carousel设置了相关的属性：</p>
+<ul>
+<li>carousel_backwardTransition在Secene中向后执行的Transition</li>
+<li>carousel_forwardTransition在Secene中向前执行的Transition</li>
+<li>carousel_firstView：确定第一个view是哪个，会关系到数据的展示顺序</li>
+<li>carousel_infinite：是否无限循环</li>
+<li>carousel_nextState：next状态对应的ConstraintSet</li>
+<li>carousel_previousState：previous状态对应的ConstraintSet</li>
+<li>constraint_referenced_ids：受到控制的id<br>
+对应在代码中设置Carousel的Adapter代码</li>
+</ul>
+<pre><code class="language-java"> binding.carousel.setAdapter(object : Carousel.Adapter {
+            override fun count(): Int {
+                return 5
+            }
+
+            override fun populate(view: View?, index: Int) {
+                if (view is ImageView) {
+                    view.load(imags[index])
+                }
+            }
+
+            override fun onNewItem(index: Int) {
+                binding.ivBack.load(imags[index])
+            }
+
+        })
+</code></pre>
+<p>在代码中count确定了总的数量，populate视图变化后的子view以及它的下标，onNewItem在firstView位置当前视图的下标。<br>
+Motion适合实现一些复杂的动画效果，不过因为是通过xml预先配置好的，所以并不适合一些动态视图的效果。</p>
+<hr>
+<h1 id="参考链接">参考链接：</h1>
+<p><a href="https://mp.weixin.qq.com/s/8Oeebb2nsxnZTsQ6iv-rdw">MotionLayout 的高级玩法我学会了</a></p>
+<hr>
+<h1 id="完整项目地址"><a href="https://github.com/Arms-merchants/Study/tree/main/UI/FlowView/app/src/main/java/com/arms/flowview/motion">完整项目地址</a></h1>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#1%E5%9C%A8%E8%AF%B4%E5%8A%A8%E7%94%BB%E5%AE%9E%E7%8E%B0%E4%B9%8B%E5%89%8D%E5%85%88%E9%92%88%E5%AF%B9%E5%87%A0%E4%B8%AA%E8%AE%BE%E7%BD%AE%E7%9B%B8%E5%85%B3%E7%9A%84%E5%B1%9E%E6%80%A7%E8%A7%A3%E9%87%8A%E4%B8%80%E4%B8%8B">1.在说动画实现之前先针对几个设置相关的属性解释一下</a>
+<ul>
+<li><a href="#%E9%92%88%E5%AF%B9%E4%B8%8A%E9%9D%A2%E7%9A%84xml%E8%A7%A3%E9%87%8A%E4%B8%80%E4%BA%9B%E6%A6%82%E5%BF%B5motionscene%E7%94%A8%E4%BA%8E%E6%8F%8F%E8%BF%B0motionlayout%E5%8A%A8%E7%94%BB%E6%B5%81%E7%A8%8B%E4%BB%A5%E5%8F%8A%E7%9B%B8%E5%85%B3%E8%AE%BE%E7%BD%AE%E7%9A%84%E6%89%80%E6%9C%89%E5%B1%9E%E6%80%A7">针对上面的xml解释一些概念，MotionScene用于描述MotionLayout动画流程以及相关设置的所有属性</a></li>
+</ul>
+</li>
+<li><a href="#%E6%A1%88%E4%BE%8B%E5%88%86%E6%9E%90">案例分析</a>
+<ul>
+<li><a href="#%E6%A1%88%E4%BE%8B1%E4%BE%A7%E6%BB%91%E8%8F%9C%E5%8D%95">案例1侧滑菜单</a></li>
+<li><a href="#%E6%95%88%E6%9E%9C2">效果2</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><a href="#%E5%8F%82%E8%80%83%E9%93%BE%E6%8E%A5">参考链接：</a></li>
+<li><a href="#%E5%AE%8C%E6%95%B4%E9%A1%B9%E7%9B%AE%E5%9C%B0%E5%9D%80">完整项目地址</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/viewpage2-qian-tao-viewpage2-de-hua-dong-chong-tu-jie-jue/">
+              <h3 class="post-title">
+                ViewPage2嵌套ViewPage2的滑动冲突解决
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

@@ -1,0 +1,214 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>使用Compose来开发WanAndroidApp碰到的一些问题集锦 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1704441990587">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="使用Compose来开发WanAndroidApp碰到的一些问题集锦 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="1.LzayCloumn页面重新展示的时候出现重新定位到顶部的问题
+1.1问题场景：
+使用Pagin加载分页数据，并显示在A的LazyColumn上，向下滑动LazyColumn，然后通过navigation.navigate跳转到页面B，..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1704441990587" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              使用Compose来开发WanAndroidApp碰到的一些问题集锦
+            </h2>
+            <div class="post-info">
+              <span>
+                2023-05-25
+              </span>
+              <span>
+                2 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="1lzaycloumn页面重新展示的时候出现重新定位到顶部的问题">1.LzayCloumn页面重新展示的时候出现重新定位到顶部的问题</h2>
+<h3 id="11问题场景">1.1问题场景：</h3>
+<p>使用Pagin加载分页数据，并显示在A的LazyColumn上，向下滑动LazyColumn，然后通过navigation.navigate跳转到页面B，接着再navigatUp回到页面A，页面A的LazyColumn又回到列表顶部。</p>
+<h3 id="12分析">1.2分析：</h3>
+<p>LazyColumn默认的参数state是有通过rememberLazyListState()来做持久化保存的。如果LazyColumn内部只包含一个items来创建子列表的话，那么是没有问题的，如果是内部通过item来创建了Header活着Footer就不行了。<br>
+这是因为rememberLazyListState会在列表中至少有一项时restore滚动位置，同时Paging是通过Flow获取数据的，当返回到页面重组时并不能马上获取到Paging数据，第一帧时Paging的itemCount为0<br>
+但同时因为LazyColumn中已经有了一个Header，这时便会还原保存的位置，但因为这时Paging中的数据还为空，不能滚动到正确的位置，于是便又滚动到顶部了<br>
+而当LazyColumn中没有Header时，列表中至少有一项时便是Paging数据成功填充的时候，这个时候还原的位置就是对的,所以没有问题。</p>
+<h3 id="13解决问题">1.3解决问题：</h3>
+<p>既然原因在于LazyListState没有在正确的时机被还原，那我们将LazyListSate保存在ViewModel中,并且在Paging中有数据时再还原listState，如下所示：</p>
+<pre><code class="language-java">@HiltViewModel
+class SquareViewModel @Inject constructor(
+    private var service: HttpService,
+) : ViewModel() {
+    private val pager by lazy { simplePager { service.getSquareData(it) }.cachedIn(viewModelScope) }
+    val listState: LazyListState = LazyListState()
+}
+ 
+@Composable
+fun SquarePage(
+    navCtrl: NavHostController,
+    scaffoldState: ScaffoldState,
+    viewModel: SquareViewModel = hiltViewModel()
+) {
+    val squareData = viewStates.pagingData.collectAsLazyPagingItems()
+    // 当`Paging`有数据时，返回`ViewModel`中的`listState`
+    val listState = if (squareData.itemCount &gt; 0) viewStates.listState else LazyListState()
+ 
+    RefreshList(squareData, listState = listState) {
+        itemsIndexed(squareData) { _, item -&gt;
+           //...
+        }
+    }
+}
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#1lzaycloumn%E9%A1%B5%E9%9D%A2%E9%87%8D%E6%96%B0%E5%B1%95%E7%A4%BA%E7%9A%84%E6%97%B6%E5%80%99%E5%87%BA%E7%8E%B0%E9%87%8D%E6%96%B0%E5%AE%9A%E4%BD%8D%E5%88%B0%E9%A1%B6%E9%83%A8%E7%9A%84%E9%97%AE%E9%A2%98">1.LzayCloumn页面重新展示的时候出现重新定位到顶部的问题</a>
+<ul>
+<li><a href="#11%E9%97%AE%E9%A2%98%E5%9C%BA%E6%99%AF">1.1问题场景：</a></li>
+<li><a href="#12%E5%88%86%E6%9E%90">1.2分析：</a></li>
+<li><a href="#13%E8%A7%A3%E5%86%B3%E9%97%AE%E9%A2%98">1.3解决问题：</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/compose-yi/">
+              <h3 class="post-title">
+                阅读KotlinCompose从入门到实战读书笔记一
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

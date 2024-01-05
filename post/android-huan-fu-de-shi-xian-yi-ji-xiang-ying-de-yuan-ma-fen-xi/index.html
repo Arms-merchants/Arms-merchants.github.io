@@ -1,0 +1,780 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Android换肤的实现以及相应的源码分析 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1704441990587">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Android换肤的实现以及相应的源码分析 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="不处理关于AMS相关的信息，那么在这后面的流程：
+ActivityThread-》performLaunchActivity（）方法-》方法内部构建了Context上下文，并且初始化了一个window对象，这个window对象在activi..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1704441990587" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Android换肤的实现以及相应的源码分析
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-11-03
+              </span>
+              <span>
+                15 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1637496148496-26e341f3bec6?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=774&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>不处理关于AMS相关的信息，那么在这后面的流程：<br>
+ActivityThread-》performLaunchActivity（）方法-》方法内部构建了Context上下文，并且初始化了一个window对象，这个window对象在activity.attach之前只是一个Activity的window对象，并没有任何的值，只有在activity.attach之后这里会构建称PhoneWindow对象，并且这里初始化了UIThread.</p>
+<p>布局创建的流程：<br>
+PhoneWindow-》DecorView-》RootView-》LayoutInflater来进行布局的加载<br>
+，这是整个布局创建的过程<br>
+资源加载的流程：<br>
+App打包的apk中有一个resources.arsc的二进制文件，这个文件里存储了所有资源相关的ID，名称以及路径，所以如果要进行换肤实际就是将这个查找的路径替换为插件包里的路径，皮肤插件包其实也是一个apk，不过只包含资源而已，为了避免被处理，一般会修改后缀名称，例如.skin，但是这个不影响资源的加载</p>
+<p>在Android中资源类是Resource类，它的内部持有一个ResourcesImpl对象，而ResourcesImpl里内部持有一个AssetManager，这个是资源的实际管理类，虽然随着版本的提升AssetManager通过ApkAssets来进行资源的设置了，但是它依然有addAssetPath方法，所以我们可以通过构建一个AssetManager来实现一个Resources，这个Resources就是插件资源管理对象，其中资源插件包的id必须是与宿主的id一致</p>
+<pre><code class="language-java">   /**
+     * 1.通过原始app中的resId(R.color.XX)获取到自己的 名字
+     * 2.根据名字和类型获取皮肤包中的ID
+     */
+    public int getIdentifier(int resId) {
+        if (isDefaultSkin) {
+            return resId;
+        }
+        //在主app中通过资源id获取name和类型，然后通过这个类型获取在资源包里的resid
+        String entryName = mAppResources.getResourceEntryName(resId);
+        String entryTypeName = mAppResources.getResourceTypeName(resId);
+        int skinId = mSkinResources.getIdentifier(entryName, entryTypeName, mSkinPackageName);
+        return skinId;
+    }
+</code></pre>
+<p>基于上面id获取方法实现的资源获取</p>
+<pre><code class="language-java">/**
+     * 通过R.color.xx 来获取到皮肤包中的color
+     * 获取color
+     * @param resId
+     * @return
+     */
+    public int getColor(int resId) {
+        if (isDefaultSkin) {
+            return mAppResources.getColor(resId);
+        }
+        int skinId = getIdentifier(resId);
+        if (skinId == 0) {
+            return mAppResources.getColor(resId);
+        }
+        return mSkinResources.getColor(skinId);
+    }
+
+    public ColorStateList getColorStateList(int resId) {
+        if (isDefaultSkin) {
+            return mAppResources.getColorStateList(resId);
+        }
+        int skinId = getIdentifier(resId);
+        if (skinId == 0) {
+            return mAppResources.getColorStateList(resId);
+        }
+        return mSkinResources.getColorStateList(skinId);
+    }
+
+    public Drawable getDrawable(int resId) {
+        if (isDefaultSkin) {
+            return mAppResources.getDrawable(resId);
+        }
+        int skinId = getIdentifier(resId);
+        if (skinId == 0) {
+            return mAppResources.getDrawable(resId);
+        }
+        return mSkinResources.getDrawable(skinId);
+    }
+
+    public Object getBackground(int resId) {
+        String resourceTypeName = mAppResources.getResourceTypeName(resId);
+        if (&quot;color&quot;.equals(resourceTypeName)) {
+            return getColor(resId);
+        } else {
+            return getDrawable(resId);
+        }
+    }
+
+</code></pre>
+<p>现在资源替换有了，那么如何进行替换？<br>
+这里要先了解View的构建过程，也就是Android是如何把xml的文件解析成View展示到界面的，针对setContentView（R.layout.XXX）进行分析，可以看出最总就是在Activity创建出的RootView进行View解析插入，而且通过源码的分析可以看</p>
+<pre><code class="language-java"> public View inflate(XmlPullParser parser, @Nullable ViewGroup root, boolean attachToRoot) {
+</code></pre>
+<p>因为Android的view是树形结构的，所以一个view必然只能有一个直接父布局，在view的布局测量过程中是受这个父布局约束的。</p>
+<pre><code class="language-java">    /**
+     * Creates a view from a tag name using the supplied attribute set.
+     * &lt;p&gt;
+     * &lt;strong&gt;Note:&lt;/strong&gt; Default visibility so the BridgeInflater can
+     * override it.
+     *
+     * @param parent the parent view, used to inflate layout params
+     * @param name the name of the XML tag used to define the view
+     * @param context the inflation context for the view, typically the
+     *                {@code parent} or base layout inflater context
+     * @param attrs the attribute set for the XML tag used to define the view
+     * @param ignoreThemeAttr {@code true} to ignore the {@code android:theme}
+     *                        attribute (if set) for the view being inflated,
+     *                        {@code false} otherwise
+     */
+    View createViewFromTag(View parent, String name, Context context, AttributeSet attrs,
+            boolean ignoreThemeAttr) {
+        if (name.equals(&quot;view&quot;)) {
+            name = attrs.getAttributeValue(null, &quot;class&quot;);
+        }
+
+        // Apply a theme wrapper, if allowed and one is specified.
+        if (!ignoreThemeAttr) {
+            final TypedArray ta = context.obtainStyledAttributes(attrs, ATTRS_THEME);
+            final int themeResId = ta.getResourceId(0, 0);
+            if (themeResId != 0) {
+                context = new ContextThemeWrapper(context, themeResId);
+            }
+            ta.recycle();
+        }
+
+        if (name.equals(TAG_1995)) {
+            // Let's party like it's 1995!
+            return new BlinkLayout(context, attrs);
+        }
+
+        try {
+            View view;
+            if (mFactory2 != null) {
+                view = mFactory2.onCreateView(parent, name, context, attrs);
+            } else if (mFactory != null) {
+                view = mFactory.onCreateView(name, context, attrs);
+            } else {
+                view = null;
+            }
+
+            if (view == null &amp;&amp; mPrivateFactory != null) {
+                view = mPrivateFactory.onCreateView(parent, name, context, attrs);
+            }
+
+            if (view == null) {
+                final Object lastContext = mConstructorArgs[0];
+                mConstructorArgs[0] = context;
+                try {
+                    if (-1 == name.indexOf('.')) {
+                        view = onCreateView(parent, name, attrs);
+                    } else {
+                        view = createView(name, null, attrs);
+                    }
+                } finally {
+                    mConstructorArgs[0] = lastContext;
+                }
+            }
+
+            return view;
+        } catch (InflateException e) {
+            throw e;
+
+        } catch (ClassNotFoundException e) {
+            final InflateException ie = new InflateException(attrs.getPositionDescription()
+                    + &quot;: Error inflating class &quot; + name, e);
+            ie.setStackTrace(EMPTY_STACK_TRACE);
+            throw ie;
+
+        } catch (Exception e) {
+            final InflateException ie = new InflateException(attrs.getPositionDescription()
+                    + &quot;: Error inflating class &quot; + name, e);
+            ie.setStackTrace(EMPTY_STACK_TRACE);
+            throw ie;
+        }
+    }
+</code></pre>
+<p>这是LayoutInflater中的view创建过程，其中上面会有mFactory2，mFactory，mPrivateFactory，三个提供的拦截器，如果这三个中有一个实现的了View的创建过程，那么就直接返回对应的View了，这就给到了我们去获取和修改View的可能性，而view的创建方法就是通过解析到的view节点名称然后去通过类名反射创建（两个参数）</p>
+<p>所以换肤这块有两种思路，一种构建新的LayoutInflater来接管系统的创建，二是设置mFactory2来进行拦截创建。</p>
+<p>所以现在通过继承mFactory2来实现：</p>
+<pre><code class="language-java">public class SkinLayoutInflaterFactory implements LayoutInflater.Factory2, Observer {
+
+    private static final String[] mClassPrefixList = {
+            &quot;android.widget.&quot;,
+            &quot;android.webkit.&quot;,
+            &quot;android.app.&quot;,
+            &quot;android.view.&quot;
+    };
+
+    //记录对应VIEW的构造函数
+    private static final Class&lt;?&gt;[] mConstructorSignature = new Class[] {
+            Context.class, AttributeSet.class};
+
+    private static final HashMap&lt;String, Constructor&lt;? extends View&gt;&gt; mConstructorMap =
+            new HashMap&lt;String, Constructor&lt;? extends View&gt;&gt;();
+
+    // 当选择新皮肤后需要替换View与之对应的属性
+    // 页面属性管理器
+    private SkinAttribute skinAttribute;
+    // 用于获取窗口的状态框的信息
+    private Activity activity;
+
+    public SkinLayoutInflaterFactory(Activity activity) {
+        this.activity = activity;
+        skinAttribute = new SkinAttribute();
+    }
+
+    @Override
+    public View onCreateView(View parent, String name, Context context, AttributeSet attrs) {
+        //换肤就是在需要时候替换 View的属性(src、background等)
+        //所以这里创建 View,从而修改View属性
+        View view = createSDKView(name, context, attrs);
+        if (null == view) {
+            view = createView(name, context, attrs);
+        }
+        //这就是我们加入的逻辑
+        if (null != view) {
+            //加载属性
+            skinAttribute.look(view, attrs);
+        }
+        return view;
+    }
+
+    private View createSDKView(String name, Context context, AttributeSet
+            attrs) {
+        //如果包含 . 则不是SDK中的view 可能是自定义view包括support库中的View
+        if (-1 != name.indexOf('.')) {
+            return null;
+        }
+        //不包含就要在解析的 节点 name前，拼上： android.widget. 等尝试去反射
+        for (int i = 0; i &lt; mClassPrefixList.length; i++) {
+            View view = createView(mClassPrefixList[i] + name, context, attrs);
+            if(view!=null){
+                return view;
+            }
+        }
+        return null;
+    }
+
+    private View createView(String name, Context context, AttributeSet
+            attrs) {
+        Constructor&lt;? extends View&gt; constructor = findConstructor(context, name);
+        try {
+            return constructor.newInstance(context, attrs);
+        } catch (Exception e) {
+        }
+        return null;
+    }
+
+    private Constructor&lt;? extends View&gt; findConstructor(Context context, String name) {
+        Constructor&lt;? extends View&gt; constructor = mConstructorMap.get(name);
+        if (constructor == null) {
+            try {
+                Class&lt;? extends View&gt; clazz = context.getClassLoader().loadClass
+                        (name).asSubclass(View.class);
+                constructor = clazz.getConstructor(mConstructorSignature);
+                mConstructorMap.put(name, constructor);
+            } catch (Exception e) {
+            }
+        }
+        return constructor;
+    }
+
+
+
+
+    @Override
+    public View onCreateView(String name, Context context, AttributeSet attrs) {
+        return null;
+    }
+
+    //如果有人发送通知，这里就会执行
+    @Override
+    public void update(Observable o, Object arg) {
+        SkinThemeUtils.updateStatusBarColor(activity);
+        skinAttribute.applySkin();
+    }
+}
+</code></pre>
+<p>属性的收集，因为我们能够替换的只有资源，例如文字的颜色，背景，图片的src，背景等等。</p>
+<pre><code class="language-java">package com.tojoy.skin.lib;
+
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
+import android.util.AttributeSet;
+import android.view.View;
+import android.widget.ImageView;
+import android.widget.TextView;
+
+import androidx.core.view.ViewCompat;
+
+
+import com.tojoy.skin.lib.utils.SkinResources;
+import com.tojoy.skin.lib.utils.SkinThemeUtils;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * &lt;pre&gt;
+ *    author : heyueyang
+ *    time   : 2021/10/28
+ *    desc   :  所有需要换肤的view的所对应的属性
+ *    version: 1.0
+ */
+class SkinAttribute {
+    private static final List&lt;String&gt; mAttributes = new ArrayList&lt;&gt;();
+
+    static {
+        mAttributes.add(&quot;background&quot;);
+        mAttributes.add(&quot;src&quot;);
+        mAttributes.add(&quot;textColor&quot;);
+        mAttributes.add(&quot;drawableLeft&quot;);
+        mAttributes.add(&quot;drawableTop&quot;);
+        mAttributes.add(&quot;drawableRight&quot;);
+        mAttributes.add(&quot;drawableBottom&quot;);
+    }
+
+    //记录换肤需要操作的View与属性信息
+    private List&lt;SkinView&gt; mSkinViews = new ArrayList&lt;&gt;();
+
+    /**
+     * 记录一个view上需要换肤的属性
+     * @param view
+     * @param attrs
+     */
+    public void look(View view, AttributeSet attrs) {
+        List&lt;SkinPair&gt; mSkinPairs = new ArrayList&lt;&gt;();
+        for (int i = 0; i &lt; attrs.getAttributeCount(); i++) {
+            String attrName = attrs.getAttributeName(i);
+            if (mAttributes.contains(attrName)) {
+                String attrValue = attrs.getAttributeValue(i);
+                /**
+                 * # 写死的
+                 * ？ 系统的 例如？actionBarHeight
+                 * @ 自定义的，正常使用的
+                 */
+                if (attrValue.startsWith(&quot;#&quot;)) {
+                    continue;
+                }
+                int resId;
+                if (attrValue.startsWith(&quot;?&quot;)) {
+                    int attrId = Integer.parseInt(attrValue.substring(1));
+                    resId = SkinThemeUtils.getResId(view.getContext(), new int[]{attrId})[0];
+                } else {
+                    resId = Integer.parseInt(attrValue.substring(1));
+                }
+                SkinPair skinPair = new SkinPair(attrName, resId);
+                mSkinPairs.add(skinPair);
+            }
+        }
+        if (!mSkinPairs.isEmpty() || view instanceof SkinViewSupport) {
+            SkinView skinView = new SkinView(view, mSkinPairs);
+            skinView.applySkin();
+            mSkinViews.add(skinView);
+        }
+    }
+
+    /*
+   对所有的view中的所有的属性进行皮肤修改
+ */
+    public void applySkin() {
+        for (SkinView mSkinView : mSkinViews) {
+            mSkinView.applySkin();
+        }
+    }
+
+
+    static class SkinView {
+        //替换的view
+        View mView;
+        //替换的属性
+        List&lt;SkinPair&gt; mPairs;
+
+        public SkinView(View view, List&lt;SkinPair&gt; pairs) {
+            mView = view;
+            mPairs = pairs;
+        }
+
+        /**
+         * 进行相应的属性替换
+         */
+        public void applySkin() {
+            applySkinSupport();
+            for (SkinPair pair : mPairs) {
+                Drawable left = null, top = null, right = null, bottom = null;
+                switch (pair.attributeName) {
+                    case &quot;background&quot;:
+                        Object background = SkinResources.getInstance().getBackground(pair.resId);
+                        if (background instanceof Integer) {
+                            mView.setBackgroundColor((int) background);
+                        } else {
+                            ViewCompat.setBackground(mView, (Drawable) background);
+                        }
+                        break;
+                    case &quot;src&quot;:
+                        background = SkinResources.getInstance().getBackground(pair.resId);
+                        if (background instanceof Integer) {
+                            ((ImageView) mView).setImageDrawable(new ColorDrawable((Integer) background));
+                        } else {
+                            ((ImageView) mView).setImageDrawable((Drawable) background);
+                        }
+                        break;
+                    case &quot;textColor&quot;:
+                        ((TextView) mView).setTextColor(SkinResources.getInstance().getColorStateList(pair.resId));
+                        break;
+                    case &quot;drawableLeft&quot;:
+                        left = SkinResources.getInstance().getDrawable(pair.resId);
+                        break;
+                    case &quot;drawableTop&quot;:
+                        top = SkinResources.getInstance().getDrawable(pair.resId);
+                        break;
+                    case &quot;drawableRight&quot;:
+                        right = SkinResources.getInstance().getDrawable(pair.resId);
+                        break;
+                    case &quot;drawableBottom&quot;:
+                        bottom = SkinResources.getInstance().getDrawable(pair.resId);
+                        break;
+                    default:
+                        break;
+                }
+                if (left != null || top != null || right != null || bottom != null) {
+                    ((TextView) mView).setCompoundDrawablesRelativeWithIntrinsicBounds(left, top,
+                            right, bottom);
+                }
+            }
+        }
+
+        private void applySkinSupport() {
+            if (mView instanceof SkinViewSupport) {
+                ((SkinViewSupport) mView).applySkin();
+            }
+        }
+
+    }
+
+
+    static class SkinPair {
+        //属性名
+        String attributeName;
+        //属性id
+        int resId;
+
+        public SkinPair(String attributeName, int resId) {
+            this.attributeName = attributeName;
+            this.resId = resId;
+        }
+    }
+}
+
+</code></pre>
+<p>所以整个需要替换属性的View的结构，替换的view和需要替换的属性，而属性又分为，属性名和id。</p>
+<p>下个问题Factory设置的实际，必须在创建View之前，如果是只有就收集不到相关的信息</p>
+<pre><code class="language-java">package com.tojoy.skin.lib;
+
+import android.app.Activity;
+import android.app.Application;
+import android.os.Bundle;
+import android.util.ArrayMap;
+import android.view.LayoutInflater;
+
+
+import com.tojoy.skin.lib.utils.SkinThemeUtils;
+
+import java.lang.reflect.Field;
+import java.util.Observable;
+
+/**
+ * &lt;pre&gt;
+ *    author : heyueyang
+ *    time   : 2021/11/01
+ *    desc   : 在这个进行activity中Layoutinflater的fatory2的设置替换，并且设置Observer的绑定设置
+ *    version: 1.0
+ */
+public class ApplicationActivityLifecycle implements Application.ActivityLifecycleCallbacks {
+
+    private Observable mObservable;
+    private ArrayMap&lt;Activity, SkinLayoutInflaterFactory&gt; mMap = new ArrayMap&lt;&gt;();
+
+    public ApplicationActivityLifecycle(Observable observable) {
+        mObservable = observable;
+    }
+
+    @Override
+    public void onActivityCreated(Activity activity, Bundle savedInstanceState) {
+        SkinThemeUtils.updateStatusBarColor(activity);
+        LayoutInflater layoutInflater = activity.getLayoutInflater();
+
+        try {
+            Field field = LayoutInflater.class.getDeclaredField(&quot;mFactorySet&quot;);
+            field.setAccessible(true);
+            field.setBoolean(layoutInflater, false);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        SkinLayoutInflaterFactory skinLayoutInflaterFactory =
+                new SkinLayoutInflaterFactory(activity);
+        layoutInflater.setFactory2(skinLayoutInflaterFactory);
+        mMap.put(activity, skinLayoutInflaterFactory);
+        mObservable.addObserver(skinLayoutInflaterFactory);
+    }
+
+    @Override
+    public void onActivityStarted(Activity activity) {
+
+    }
+
+    @Override
+    public void onActivityResumed(Activity activity) {
+
+    }
+
+    @Override
+    public void onActivityPaused(Activity activity) {
+
+    }
+
+    @Override
+    public void onActivityStopped(Activity activity) {
+
+    }
+
+    @Override
+    public void onActivitySaveInstanceState(Activity activity, Bundle outState) {
+
+    }
+
+    @Override
+    public void onActivityDestroyed(Activity activity) {
+        SkinLayoutInflaterFactory skinLayoutInflaterFactory = mMap.remove(activity);
+        SkinManager.getInstance().deleteObserver(skinLayoutInflaterFactory);
+    }
+}
+
+</code></pre>
+<p>工厂和Activity进行绑定并通过Observable来进行通知触发换肤改变。</p>
+<pre><code class="language-java">
+package com.tojoy.skin.lib;
+
+import android.app.Application;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
+import android.content.res.AssetManager;
+import android.content.res.Resources;
+import android.text.TextUtils;
+
+import com.tojoy.skin.lib.utils.SkinResources;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.Observable;
+
+/**
+ * &lt;pre&gt;
+ *    author : heyueyang
+ *    time   : 2021/10/29
+ *    desc   :
+ *    version: 1.0
+ */
+public class SkinManager extends Observable {
+
+    private volatile static SkinManager instance;
+
+    private Application mContext;
+
+    private ApplicationActivityLifecycle mLifecycle;
+
+    public static void init(Application application) {
+        if (instance == null) {
+            synchronized (SkinManager.class) {
+                if (instance == null) {
+                    instance = new SkinManager(application);
+                }
+            }
+        }
+    }
+
+    private SkinManager(Application context) {
+        mContext = context;
+        SkinPreference.init(context);
+        SkinResources.init(context);
+        mLifecycle = new ApplicationActivityLifecycle(this);
+        context.registerActivityLifecycleCallbacks(mLifecycle);
+        loadSkin(SkinPreference.getInstance().getSkin());
+    }
+
+    public static SkinManager getInstance() {
+        return instance;
+    }
+
+    public void loadSkin(String skinPath) {
+        if (TextUtils.isEmpty(skinPath)) {
+            SkinPreference.getInstance().reset();
+            SkinResources.getInstance().reset();
+        } else {
+            try {
+                Resources appResources = mContext.getResources();
+                //构建AssetManager
+                AssetManager assetManager = AssetManager.class.newInstance();
+                Method addAssetPath = assetManager.getClass().getMethod(&quot;addAssetPath&quot;,
+                        String.class);
+                addAssetPath.invoke(assetManager, skinPath);
+
+                Resources skinResource = new Resources(assetManager,
+                        appResources.getDisplayMetrics(), appResources.getConfiguration());
+
+                PackageManager manager = mContext.getPackageManager();
+                PackageInfo skinInfo = manager.getPackageArchiveInfo(skinPath,
+                        PackageManager.GET_ACTIVITIES);
+                String skinPackageName = skinInfo.packageName;
+                SkinResources.getInstance().applySkin(skinResource, skinPackageName);
+            } catch (IllegalAccessException e) {
+                e.printStackTrace();
+            } catch (InstantiationException e) {
+                e.printStackTrace();
+            } catch (NoSuchMethodException e) {
+                e.printStackTrace();
+            } catch (InvocationTargetException e) {
+                e.printStackTrace();
+            }
+        }
+        setChanged();
+        notifyObservers(null);
+    }
+}
+</code></pre>
+<p>Assets的路径文件不能直接访问，所以需要先将文件拷贝到目录下再进行访问。</p>
+<hr>
+<p>一个单独要注意的问题，因为LayoutInflater的限定是只能有一个Factory，所以这里一个背景库给到的解决方案是获取已经设置过的Factory来进行view的创建<br>
+<a href="https://github.com/JavaNoober/BackgroundLibrary">GitHub - JavaNoober/BackgroundLibrary: A framework for directly generating shape through Tags, no need to write shape.xml again（通过标签直接生成shape，无需再写shape.xml）</a></p>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/android-xu-ni-ji-he-lei-jia-zai-ji-zhi/">
+              <h3 class="post-title">
+                Android虚拟机和类加载机制
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

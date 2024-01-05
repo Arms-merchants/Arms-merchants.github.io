@@ -1,0 +1,710 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NDK开发-使用FMOD进行变声 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1704441990587">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="NDK开发-使用FMOD进行变声 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="FMOD一款强大的语音引擎，等同于视频届的FFMPEG.可以进行音频的多种修改和设置，它有提供客户端来进行直接使用，不过今天我们通过集成API来实现几个简单的变音效果。
+1.NDK配置
+现在需要注意的是在新版本的AndroidStudio中..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1704441990587" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              NDK开发-使用FMOD进行变声
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-04-28
+              </span>
+              <span>
+                16 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1684166251886-5c4fbb1d3c5b?ixlib=rb-4.0.3&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=1770&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>FMOD一款强大的语音引擎，等同于视频届的FFMPEG.可以进行音频的多种修改和设置，它有提供客户端来进行直接使用，不过今天我们通过集成API来实现几个简单的变音效果。</p>
+<h2 id="1ndk配置">1.NDK配置</h2>
+<p>现在需要注意的是在新版本的AndroidStudio中已经不支持在local.properties设置中设置ndk.dir的配置来设置使用的NDK版本，如果需要配置的话通过下面的方式：</p>
+<pre><code class="language-java">android{
+    ndkVersion &quot;major.minor.build&quot; //ndkVersion &quot;21.3.6528147&quot;
+}
+</code></pre>
+<p>如果不指定的话那么默认采用当前AGP支持的最高版本。<br>
+导入fmod的文件，这里包括两个部分，一个是动态库（so库），一个是头文件<br>
+通过头文件我们就可以使用对应的fmod的方法了。<br>
+将fmod的inc头文件拷贝到cpp目录下，将so库拷贝到jinLibs（默认，也可以是指定的so库目录）<br>
+修改默认的CMakeLists.txt文件：</p>
+<pre><code class="language-java">#批量导入源文件，避免还需要一个个的导入源文件
+file(GLOB allCPP *.c *.h *.cpp)
+
+add_library( # Sets the name of the library.
+        native-lib
+
+        # Sets the library as a shared library.
+         #SHARED 表示这个库是一个动态库 STATIC表示这个库是一个静态库，动态库是以.so文件结尾 静态库是以.a结尾，并且Android的话
+        #在打包的最后只会包含有动态库，因为如果是静态库的话那么会将对应的代码拷贝到对应的地方，也就是在运行的时候不需要静态库了，而动态库对应的都是通过地址
+        #来进行链接的，那么库文件还是需要的
+        SHARED
+
+        # Provides a relative path to your source file(s).
+        //注意这里的名称要和上面批量导入的名称一致
+        ${allCPP}
+        )
+
+#导入库文件，也就是三方的so，不过需要注意这个是需要在jniLibs中有对应文件夹后才能生效，不然会在编译阶段报错
+set(CMAKE_CXX_FLAGS &quot;${CMAKE_CXX_FLAGS} -L${CMAKE_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI}&quot;)
+</code></pre>
+<h2 id="2添加fmod的头文件和库">2.添加FMOD的头文件和库</h2>
+<p>将下载的FMOD中对应的头文件文件夹inc拷贝到cpp目录下，在jniLibs中拷贝需要使用到的的架构目录。<br>
+在CMakeLists.txt中添加配置信息：</p>
+<pre><code class="language-java">#批量导入头文件,注意对应的目录，当前的根目录是CMakeLists.txt所在的目录
+include_directories(&quot;inc&quot;)
+#链接对应的库文件
+target_link_libraries( # Specifies the target library.
+        native-lib
+
+        # Links the target library to the log library
+        # included in the NDK.
+        ${log-lib}
+        fmod
+        fmodL
+        )
+</code></pre>
+<p>完整的CMakeLists.txt文件：</p>
+<pre><code class="language-java"># For more information about using CMake with Android Studio, read the
+# documentation: https://d.android.com/studio/projects/add-native-code.html
+
+# Sets the minimum version of CMake required to build the native library.
+
+cmake_minimum_required(VERSION 3.10.2)
+
+# Declares and names the project.
+
+project(&quot;ndktest&quot;)
+
+# Creates and names a library, sets it as either STATIC
+# or SHARED, and provides the relative paths to its source code.
+# You can define multiple libraries, and CMake builds them for you.
+# Gradle automatically packages shared libraries with your APK.
+
+#批量导入头文件
+include_directories(&quot;inc&quot;)
+#批量导入源文件
+file(GLOB allCPP *.c *.h *.cpp)
+
+add_library( # Sets the name of the library.
+        native-lib
+
+        # Sets the library as a shared library.
+        SHARED
+
+        # Provides a relative path to your source file(s).
+        ${allCPP}
+        )
+#导入库文件，也就是三方的so
+set(CMAKE_CXX_FLAGS &quot;${CMAKE_CXX_FLAGS} -L${CMAKE_SOURCE_DIR}/../jniLibs/${CMAKE_ANDROID_ARCH_ABI}&quot;)
+
+# Searches for a specified prebuilt library and stores the path as a
+# variable. Because CMake includes system libraries in the search path by
+# default, you only need to specify the name of the public NDK library
+# you want to add. CMake verifies that the library exists before
+# completing its build.
+
+find_library( # Sets the name of the path variable.
+        log-lib
+
+        # Specifies the name of the NDK library that
+        # you want CMake to locate.
+        log)
+
+# Specifies libraries CMake should link to your target library. You
+# can link multiple libraries, such as libraries you define in this
+# build script, prebuilt third-party libraries, or system libraries.
+
+target_link_libraries( # Specifies the target library.
+        native-lib
+
+        # Links the target library to the log library
+        # included in the NDK.
+        ${log-lib}
+        fmod
+        fmodL
+        )
+</code></pre>
+<h2 id="3准备需要编辑的音频文件">3.准备需要编辑的音频文件</h2>
+<p>这里我直接准备了一个mp3文件来进行编辑，当然也可以进行录制后编辑。在assets目录中放入mp3文件，这里为了方便操作，使用okio将文件拷贝到cache目录操作，这样也不需要进行权限的申请。</p>
+<pre><code class="language-java">    implementation 'com.squareup.okio:okio:2.10.0'
+</code></pre>
+<p>拷贝文件：</p>
+<pre><code class="language-java">    private fun copyFile(): String {
+        //将assets目录下的文件拷贝到应用的cache目录下，这里的source是okio的扩展方法
+        val targetFile = File(this.cacheDir, &quot;test.mp3&quot;)
+        //使用use来自动关闭实现Closeable的对象
+        this.assets.open(&quot;test.mp3&quot;).source().use { source -&gt;
+            targetFile.sink().buffer().use {
+                it.writeAll(source)
+            }
+        }
+        return targetFile.path;
+    }
+</code></pre>
+<h2 id="4使用ndk实现对应的方法调用">4.使用NDK实现对应的方法调用</h2>
+<pre><code class="language-c++">#include &lt;jni.h&gt;
+#include &lt;string&gt;
+
+#include &lt;fmod.hpp&gt;
+
+#include &quot;Student.h&quot;
+
+using namespace std;
+using namespace FMOD;
+
+//android的log打印需要导入的头文件P
+#include &lt;android/log.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;pthread.h&gt;
+//宏定义
+#define LOG_TAG &quot;ARM_NDK&quot;
+//...的参数由__VA_ARGS__来进行确认
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__);
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__);
+
+#undef MODE_NORMAL
+#define MODE_NORMAL 0
+#undef MODE_FUNNY
+#define MODE_FUNNY 1
+#undef MODE_UNCLE
+#define MODE_UNCLE 2
+#undef MODE_LOLITA
+#define MODE_LOLITA 3
+#undef MODE_ROBOT
+#define MODE_ROBOT 4
+#undef MODE_ETHEREAL
+#define MODE_ETHEREAL 5
+#undef MODE_CHORUS
+#define MODE_CHORUS 6
+#undef MODE_HORROR
+#define MODE_HORROR 7
+
+extern &quot;C&quot; {
+//因为cpp是C++，如果要导入c的代码，需要使用c的语言环境
+};
+
+extern &quot;C&quot; JNIEXPORT
+jstring JNICALL
+Java_com_arms_ndktest_MainActivity_stringFromJNI(
+        JNIEnv
+        *env,
+        jobject /* this */) {
+    string hello = &quot;Hello from C++&quot;;
+    LOGE(&quot;测试打印&quot;);
+    auto *student = new Student(&quot;haha&quot;, 21);
+    const char *str = student-&gt;getName().c_str();
+    LOGE(&quot;%s&quot;, str);
+    delete student;
+    return env-&gt;
+            NewStringUTF(hello.c_str());
+}
+
+//没有返回值的JNI方法,非静态方法，非静态方法的话这里是jobject
+extern &quot;C&quot;
+JNIEXPORT void JNICALL
+Java_com_arms_ndktest_MainActivity_testNoReturnFromJNI(JNIEnv
+                                                       *env,
+                                                       jobject thiz
+) {
+    //如果是从java层传入的数组，那么直接修改操作只会在c++层生效，不会改变java层的数据
+    jintArray jintArray1;
+    int length = env-&gt;GetArrayLength(jintArray1);
+
+    int *pInt = env-&gt;GetIntArrayElements(jintArray1, NULL);
+    for (int i = 0; i &lt; length; i++) {
+        *(pInt + i) += 100;
+    }
+    //通过下面的操作杆来达到修改对应java的数据，mode的模式0 刷新java数组，释放C++层数组 JNI_COMMIT:只提交只刷新Java数组，不释放C++,JNI_ABORT:只释放C++层数据
+    env-&gt;ReleaseIntArrayElements(jintArray1, pInt, 0);
+}
+//一个测试方法，使用c++来构建一个java的对象，并设置其中的参数
+void test(JNIEnv *env) {
+
+    const char *className = &quot;com/arms/ndktest/PeopleBean&quot;;
+
+    jclass pJclass = env-&gt;FindClass(className);
+    //这种方式不会调用构造方法
+    jobject pJobject = env-&gt;AllocObject(pJclass);
+    //这种方式，说白了就是要传入一个方法，这个方法就是构造方法从而来执行指定的构造方法
+    jmethodID pJmethodId = env-&gt;GetMethodID(pJclass, &quot;&lt;init&gt;&quot;, &quot;()V&quot;);
+    jobject object = env-&gt;NewObject(pJclass, pJmethodId);
+
+    jmethodID setNameMethod = env-&gt;GetMethodID(pJclass, &quot;setName&quot;, &quot;(Ljava/lang/String;)V&quot;);
+    jmethodID setAageMethod = env-&gt;GetMethodID(pJclass, &quot;setAge&quot;, &quot;(I)V&quot;);
+
+    jstring nameValue = env-&gt;NewStringUTF(&quot;123&quot;);
+
+    env-&gt;CallVoidMethod(pJobject, setNameMethod, nameValue);
+    env-&gt;CallVoidMethod(pJobject, setAageMethod, 11);
+
+    env-&gt;DeleteLocalRef(pJclass);
+    env-&gt;DeleteLocalRef(pJobject);
+}
+
+/**
+最开始在MainActivity中来实现对应的方法，出入参数为播放的模式以及对应的音频文件路径
+*/
+extern &quot;C&quot;
+JNIEXPORT void JNICALL
+Java_com_arms_ndktest_MainActivity_voiceChangeNative(JNIEnv *env, jobject thiz, jint mode,
+                                                     jstring path) {
+    char *content_ = &quot;播放完毕&quot;;
+    const char *path_ = env-&gt;GetStringUTFChars(path, NULL);
+    LOGE(&quot;mode:%d&quot;, mode);
+    System *system = 0;
+    Sound *sound = 0;
+    Channel *channel = 0;
+    DSP *dsp = 0;
+    System_Create(&amp;system);
+    system-&gt;init(32, FMOD_INIT_NORMAL, 0);
+    system-&gt;createSound(path_, FMOD_DEFAULT, 0, &amp;sound);
+    system-&gt;playSound(sound, 0, false, &amp;channel);
+    switch (mode) {
+        case 1:
+            content_ = &quot;原声播放&quot;;
+            break;
+        case 2:
+            content_ = &quot;萝莉播放&quot;;
+            system-&gt;createDSPByType(FMOD_DSP_TYPE_PITCHSHIFT, &amp;dsp);
+            dsp-&gt;setParameterFloat(FMOD_DSP_PITCHSHIFT_PITCH, 2.0f);
+            channel-&gt;addDSP(0, dsp);
+            break;
+        case 3:
+            content_ = &quot;大叔播放&quot;;
+            // 音调低 -- 大叔 0.7
+            // 1.创建DSP类型的Pitch 音调条件
+            system-&gt;createDSPByType(FMOD_DSP_TYPE_PITCHSHIFT, &amp;dsp);
+            // 2.设置Pitch音调调节2.0
+            dsp-&gt;setParameterFloat(FMOD_DSP_PITCHSHIFT_PITCH, 0.7f);
+            // 3.添加音效进去 音轨
+            channel-&gt;addDSP(0, dsp);
+            break;
+        case 4:
+            content_ = &quot;搞怪播放&quot;;
+            // 小黄人声音 频率快
+
+            // 从音轨拿 当前 频率
+            float mFrequency;
+            channel-&gt;getFrequency(&amp;mFrequency);
+
+            // 修改频率
+            channel-&gt;setFrequency(mFrequency * 1.5f); // 频率加快  小黄人的声音
+            break;
+        case 5:
+            content_ = &quot;惊悚播放&quot;;
+            // TODO 音调低
+            // 音调低 -- 大叔 0.7
+            // 1.创建DSP类型的Pitch 音调条件
+            system-&gt;createDSPByType(FMOD_DSP_TYPE_PITCHSHIFT, &amp;dsp);
+            // 2.设置Pitch音调调节2.0
+            dsp-&gt;setParameterFloat(FMOD_DSP_PITCHSHIFT_PITCH, 0.7f);
+            // 3.添加音效进去 音轨
+            channel-&gt;addDSP(0, dsp); // 第一个音轨
+
+            // TODO 搞点回声
+            // 回音 ECHO
+            system-&gt;createDSPByType(FMOD_DSP_TYPE_ECHO, &amp;dsp);
+            dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_DELAY, 200); // 回音 延时    to 5000.  Default = 500.
+            dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_FEEDBACK, 10); // 回音 衰减度 Default = 50   0 完全衰减了
+            channel-&gt;addDSP(1, dsp); // 第二个音轨
+
+            // TODO 颤抖
+            // Tremolo 颤抖音 正常5    非常颤抖  20
+            system-&gt;createDSPByType(FMOD_DSP_TYPE_TREMOLO, &amp;dsp);
+            dsp-&gt;setParameterFloat(FMOD_DSP_TREMOLO_FREQUENCY, 20); // 非常颤抖
+            dsp-&gt;setParameterFloat(FMOD_DSP_TREMOLO_SKEW, 0.8f); // ？？？
+            channel-&gt;addDSP(2, dsp); // 第三个音轨
+            break;
+        case 6:
+            content_ = &quot;空灵播放&quot;;
+            // 回音 ECHO
+            system-&gt;createDSPByType(FMOD_DSP_TYPE_ECHO, &amp;dsp);
+            dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_DELAY, 200); // 回音 延时    to 5000.  Default = 500.
+            dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_FEEDBACK, 10); // 回音 衰减度 Default = 50   0 完全衰减了
+            channel-&gt;addDSP(0, dsp);
+            break;
+    }
+    bool isPlayer = true;
+    while (isPlayer) {
+        channel-&gt;isPlaying(&amp;isPlayer);
+        usleep(1000 * 1000);
+    }
+    sound-&gt;release();
+    system-&gt;close();
+    system-&gt;release();
+    env-&gt;ReleaseStringUTFChars(path, path_);
+}
+
+Channel *channel = 0;
+
+extern &quot;C&quot;
+JNIEXPORT jint JNICALL
+Java_com_arms_ndktest_FmodSound_saveSound(JNIEnv *env, jobject cls, jstring path_jstr, jint type,
+                                          jstring save_jstr) {
+    Sound *sound;
+    DSP *dsp;
+    bool playing = true;
+    float frequency = 0;
+    System *mSystem;
+    JNIEnv *mEnv = env;
+    int code = 0;
+    System_Create(&amp;mSystem);
+    const char *path_cstr = mEnv-&gt;GetStringUTFChars(path_jstr, NULL);
+    LOGI(&quot;saveAiSound-%s&quot;, path_cstr);
+    const char *save_cstr;
+    if (save_jstr != NULL) {
+        save_cstr = mEnv-&gt;GetStringUTFChars(save_jstr, NULL);
+        LOGI(&quot;saveAiSound-save_path=%s&quot;, save_cstr)
+    }
+    try {
+        if (save_jstr != NULL) {
+            char cDest[200];
+            strcpy(cDest, save_cstr);
+            mSystem-&gt;setSoftwareFormat(8000, FMOD_SPEAKERMODE_MONO, 0); //设置采样率为8000，channel为1
+            mSystem-&gt;setOutput(FMOD_OUTPUTTYPE_WAVWRITER); //保存文件格式为WAV
+            mSystem-&gt;init(32, FMOD_INIT_NORMAL, cDest);
+            mSystem-&gt;recordStart(0, sound, true);
+        }
+        //创建声音
+        mSystem-&gt;createSound(path_cstr, FMOD_DEFAULT, NULL, &amp;sound);
+        mSystem-&gt;playSound(sound, 0, false, &amp;channel);
+        LOGI(&quot;saveAiSound-%s&quot;, &quot;save_start&quot;)
+        switch (type) {
+            case MODE_NORMAL:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_NORMAL&quot;);
+                break;
+            case MODE_FUNNY:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_FUNNY&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_NORMALIZE, &amp;dsp);
+                channel-&gt;getFrequency(&amp;frequency);
+                frequency = frequency * 1.6;
+                channel-&gt;setFrequency(frequency);
+                break;
+            case MODE_UNCLE:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_UNCLE&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_PITCHSHIFT, &amp;dsp);
+                dsp-&gt;setParameterFloat(FMOD_DSP_PITCHSHIFT_PITCH, 0.8);
+                channel-&gt;addDSP(0, dsp);
+                break;
+            case MODE_LOLITA:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_LOLITA&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_PITCHSHIFT, &amp;dsp);
+                dsp-&gt;setParameterFloat(FMOD_DSP_PITCHSHIFT_PITCH, 1.8);
+                channel-&gt;addDSP(0, dsp);
+                break;
+            case MODE_ROBOT:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_ROBOT&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_ECHO, &amp;dsp);
+                dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_DELAY, 50);
+                dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_FEEDBACK, 60);
+                channel-&gt;addDSP(0, dsp);
+                break;
+            case MODE_ETHEREAL:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_ETHEREAL&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_ECHO, &amp;dsp);
+                dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_DELAY, 300);
+                dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_FEEDBACK, 20);
+                channel-&gt;addDSP(0, dsp);
+                break;
+            case MODE_CHORUS:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_CHORUS&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_ECHO, &amp;dsp);
+                dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_DELAY, 100);
+                dsp-&gt;setParameterFloat(FMOD_DSP_ECHO_FEEDBACK, 50);
+                channel-&gt;addDSP(0, dsp);
+                break;
+            case MODE_HORROR:
+                LOGI(&quot;saveAiSound-%s&quot;, &quot;save MODE_HORROR&quot;)
+                mSystem-&gt;createDSPByType(FMOD_DSP_TYPE_TREMOLO, &amp;dsp);
+                dsp-&gt;setParameterFloat(FMOD_DSP_TREMOLO_SKEW, 0.8);
+                channel-&gt;addDSP(0, dsp);
+                break;
+            default:
+                break;
+        }
+        mSystem-&gt;update();
+    } catch (...) {
+        LOGE(&quot;saveAiSound-%s&quot;, &quot;save error!&quot;)
+        code = 1;
+        goto end;
+    }
+    while (playing) {
+        usleep(1000);
+        channel-&gt;isPlaying(&amp;playing);
+    }
+    LOGI(&quot;saveAiSound-%s&quot;, &quot;save over!&quot;)
+    goto end;
+    end:
+    if (path_jstr != NULL) {
+        mEnv-&gt;ReleaseStringUTFChars(path_jstr, path_cstr);
+    }
+    if (save_jstr != NULL) {
+        mEnv-&gt;ReleaseStringUTFChars(save_jstr, save_cstr);
+    }
+    sound-&gt;release();
+    mSystem-&gt;close();
+    mSystem-&gt;release();
+    return code;
+}
+
+extern &quot;C&quot;
+JNIEXPORT jint JNICALL
+Java_com_arms_ndktest_FmodSound_playSound(JNIEnv *env, jobject thiz, jstring path, jint type) {
+}
+extern &quot;C&quot;
+JNIEXPORT void JNICALL
+Java_com_arms_ndktest_FmodSound_stopPlay(JNIEnv *env, jobject thiz) {
+    channel-&gt;stop();
+}
+extern &quot;C&quot;
+JNIEXPORT void JNICALL
+Java_com_arms_ndktest_FmodSound_resumePlay(JNIEnv *env, jobject thiz) {
+    channel-&gt;stop();
+    //检测当前的env执行过程是否有异常发生
+    jthrowable pJthrowable = env-&gt;ExceptionOccurred();
+    if (pJthrowable) {
+        //主动清除异常
+        env-&gt;ExceptionClear();
+        //JNI中主动抛出异常
+        jclass throwClass = env-&gt;FindClass(&quot;java/lang/NoSuchFieldError&quot;);
+        env-&gt;ThrowNew(throwClass, &quot;dfsdf&quot;);
+    }
+}
+extern &quot;C&quot;
+JNIEXPORT void JNICALL
+Java_com_arms_ndktest_FmodSound_pausePlay(JNIEnv *env, jobject thiz) {
+    channel-&gt;stop();
+}
+extern &quot;C&quot;
+JNIEXPORT jboolean JNICALL
+Java_com_arms_ndktest_FmodSound_isPlaying(JNIEnv *env, jobject thiz) {
+    bool isPlaying = false;
+    channel-&gt;isPlaying(&amp;isPlaying);
+    return isPlaying;
+}
+
+JavaVM *javaVm = nullptr;
+
+/**
+ * JNIEnv *env 不能跨越线程，可以跨越函数  解决方案通过JavaVM.attchCurrentThread获取子线程的JNIEnv
+ * jobject thiz 不能跨越线程和函数  这个通过提升为全局变量来解决
+ * JavaVM *javaVm 可以跨越线程和函数
+ *
+ * 动态注册的代码
+ * @param javaVm
+ * @return
+ */
+JNIEXPORT jint JNI_OnLoad(JavaVM *javaVm, void *) {
+    //::javaVm = javaVm;
+    JNIEnv *jniEnv = nullptr;
+    int result = javaVm-&gt;GetEnv(reinterpret_cast&lt;void **&gt;(&amp;jniEnv), JNI_VERSION_1_6);
+    if (result != JNI_OK) {
+        return -1;
+    }
+    return JNI_VERSION_1_6;
+}
+
+class MyContext {
+public:
+    JNIEnv *jniEnv = nullptr;
+    jobject instance = nullptr;
+};
+
+void *myThreadTaskAction(void *pVoid) {
+    //这个函数中指针运行在子线程中
+    MyContext *myContext = static_cast&lt;MyContext *&gt;(pVoid);
+    JNIEnv *jniEnv = nullptr;
+    //通过JavaVM.attchCurrentThread获取子线程的JNIEnv
+    jint result = ::javaVm-&gt;AttachCurrentThread(&amp;jniEnv, nullptr);
+    if (result != JNI_OK) {
+        return 0;
+    }
+    jclass activityClass = jniEnv-&gt;GetObjectClass(myContext-&gt;instance);
+
+    jmethodID methodId = jniEnv-&gt;GetMethodID(activityClass, &quot;showAlter&quot;, &quot;()V&quot;);
+
+    jniEnv-&gt;CallVoidMethod(myContext-&gt;instance, methodId);
+
+    ::javaVm-&gt;DetachCurrentThread();
+    return nullptr;
+}
+
+
+/**
+ * 在C++的子线程中回掉Java层代码
+ */
+extern &quot;C&quot;
+JNIEXPORT void JNICALL
+Java_com_arms_ndktest_MainActivity_callJNIAsync(JNIEnv *env, jobject thiz) {
+    env-&gt;GetJavaVM(&amp;::javaVm);
+    auto *myContext = new MyContext;
+    myContext-&gt;jniEnv = env;
+    //jobject thiz 不能跨越线程和函数  这个通过提升为全局变量来解决
+    myContext-&gt;instance = env-&gt;NewGlobalRef(thiz);
+    pthread_t pid;
+    //c中的创建子线程
+    pthread_create(&amp;pid, nullptr, myThreadTaskAction, myContext);
+    pthread_join(pid, nullptr);
+}
+</code></pre>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#1ndk%E9%85%8D%E7%BD%AE">1.NDK配置</a></li>
+<li><a href="#2%E6%B7%BB%E5%8A%A0fmod%E7%9A%84%E5%A4%B4%E6%96%87%E4%BB%B6%E5%92%8C%E5%BA%93">2.添加FMOD的头文件和库</a></li>
+<li><a href="#3%E5%87%86%E5%A4%87%E9%9C%80%E8%A6%81%E7%BC%96%E8%BE%91%E7%9A%84%E9%9F%B3%E9%A2%91%E6%96%87%E4%BB%B6">3.准备需要编辑的音频文件</a></li>
+<li><a href="#4%E4%BD%BF%E7%94%A8ndk%E5%AE%9E%E7%8E%B0%E5%AF%B9%E5%BA%94%E7%9A%84%E6%96%B9%E6%B3%95%E8%B0%83%E7%94%A8">4.使用NDK实现对应的方法调用</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/zai-bu-tong-ban-ben-xia-tong-guo-hook-lai-qi-dong-cha-jian-activity-de-liu-cheng/">
+              <h3 class="post-title">
+                在不同版本下通过Hook来启动插件activity的流程
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

@@ -1,0 +1,803 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>手势控制以及多点触控 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1704441990587">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="手势控制以及多点触控 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="场景1：实现一个简单的PhotoView，相关功能包括，双击放大，放大拖动，双指缩放
+功能分析：
+1.双击放大，放大拖动：
+官方提供了GestureDetector来进行手势相关的处理：
+/**
+这里使用SimpleOnGestureLis..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1704441990587" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              手势控制以及多点触控
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-12-27
+              </span>
+              <span>
+                15 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1640515464528-7e47bcb7b242?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=774&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="场景1实现一个简单的photoview相关功能包括双击放大放大拖动双指缩放">场景1：实现一个简单的PhotoView，相关功能包括，双击放大，放大拖动，双指缩放</h2>
+<h3 id="功能分析">功能分析：</h3>
+<p>1.双击放大，放大拖动：<br>
+官方提供了GestureDetector来进行手势相关的处理：</p>
+<pre><code class="language-java">/**
+这里使用SimpleOnGestureListener，SimpleOnGestureListener实现了OnDoubleTapListener接口，这里就有我们需要使用的双击实现的回掉
+*/
+val gestureDetector = GestureDetector(context, gestureDetectorListener)
+
+ /**
+     * 手势处理类
+     */
+    val gestureDetectorListener = object : GestureDetector.SimpleOnGestureListener() {
+
+        /**
+         * 一个事件的开始是从down开始的，如果down没有获取到
+         * 那么后续的事件也不会再消费，所以这里为了实现双击的效果，需要消费事件
+         */
+        override fun onDown(e: MotionEvent?): Boolean {
+            return true
+        }
+
+        /**
+         * 显示水波纹
+         */
+        override fun onShowPress(e: MotionEvent?) {
+            super.onShowPress(e)
+        }
+
+        /**
+         * 单击事件的，up事件时回掉
+         */
+        override fun onSingleTapUp(e: MotionEvent?): Boolean {
+            return super.onSingleTapUp(e)
+        }
+
+        /**
+         * 滑动是进行图像移动
+         */
+        override fun onScroll(
+            e1: MotionEvent?,
+            e2: MotionEvent?,
+            distanceX: Float,
+            distanceY: Float
+        ): Boolean {
+         return super.onScroll(e1, e2, distanceX, distanceY)
+        }
+
+        /**
+         * 长按
+         */
+        override fun onLongPress(e: MotionEvent?) {
+            super.onLongPress(e)
+        }
+
+        /**
+         * 惯性滑动，在惯性滑动的情况下实现一个回弹的效果
+         */
+        override fun onFling(
+            e1: MotionEvent?,
+            e2: MotionEvent?,
+            velocityX: Float,
+            velocityY: Float
+        ): Boolean {
+            return super.onFling(e1, e2, velocityX, velocityY)
+        }
+
+        /**
+         * 点击在up以及Tag时会触发回掉
+         */
+        override fun onSingleTapConfirmed(e: MotionEvent?): Boolean {
+            return super.onSingleTapConfirmed(e)
+        }
+
+        /**
+         * 双击事件的的Event回掉，包括有down，move，up
+         */
+        override fun onDoubleTapEvent(e: MotionEvent?): Boolean {
+            return super.onDoubleTapEvent(e)
+
+        }
+
+        override fun onContextClick(e: MotionEvent?): Boolean {
+            return super.onContextClick(e)
+        }
+
+        /**
+         * 双击事件的第二次down事件会进行回掉
+         */
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+             return super.onDoubleTap(e)
+        }
+    }
+</code></pre>
+<p>根据相关的注释，我们可以在onDoubleTap处理双击所发的处理，onScroll来进行滑动的处理并且可以在onFling中处理滑动的惯性处理，具体的业务处理看下面的完整代码。<br>
+2.双指缩放：<br>
+缩放手势处理类：ScaleGestureDetector</p>
+<pre><code class="language-java">scaleGestureDetector = ScaleGestureDetector(context, PhotoScaleGestureListener())
+
+ /**
+     * 手势发生时接收通知的监听器。 如果你想监听所有不同的手势，那么实现这个接口。 如果您只想侦听子集，
+     * 扩展ScaleGestureDetector.SimpleOnScaleGestureListener可能会更容易。 应用程序将按以下顺序接收事件：
+    一个onScaleBegin(ScaleGestureDetector)
+    零个或多个onScale(ScaleGestureDetector)
+    一个onScaleEnd(ScaleGestureDetector)
+     */
+    inner class PhotoScaleGestureListener : ScaleGestureDetector.OnScaleGestureListener {
+        /**
+         * 响应正在进行的手势的缩放事件。 通过指针运动报告
+         * @param
+         * @return 检测器是否应将此事件视为已处理。 如果事件未被处理，探测器将继续累积运动，直到事件被处理。 例如，如果应用程序只想在更改大于 0.01 时更新缩放因子，这会很有用。
+         */
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            return false
+        }
+
+        /**
+         * @return 检测器是否应继续识别此手势。 例如，如果手势开始于有意义的区域之外的焦点，则 onScaleBegin() 可能会返回 false 以忽略手势的其余部分
+         */
+        override fun onScaleBegin(detector: ScaleGestureDetector?): Boolean {
+            return true
+        }
+
+        /**
+         * 手势缩放结束时，处理边界问题
+         */
+        override fun onScaleEnd(detector: ScaleGestureDetector?) {
+        }
+    }
+</code></pre>
+<p>当我们构建好这两个手势处理类后就可以去接管View的Touch事件</p>
+<pre><code class="language-java">  override fun onTouchEvent(event: MotionEvent?): Boolean {
+      //首先先处理的是双指缩放，因为如果先处理双击和滑动的话，双指就永远没有机会触发了
+        var result = scaleGestureDetector.onTouchEvent(event)
+        if (!scaleGestureDetector.isInProgress) {
+            result = gestureDetector.onTouchEvent(event)
+        }
+        return result
+    }
+</code></pre>
+<h3 id="完整的代码">完整的代码：</h3>
+<p>整个构建涉及到的知识点包括：自定义view，手势控制，属性动画，</p>
+<pre><code class="language-java">package com.arms.flowview.photoView
+
+import android.animation.ObjectAnimator
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.util.AttributeSet
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
+import android.view.View
+import android.widget.OverScroller
+import com.arms.flowview.R
+import com.arms.flowview.ext.logE
+import com.arms.flowview.utils.ConverUtils
+import com.arms.flowview.utils.ImageUtils
+
+/**
+ *    author : heyueyang
+ *    time   : 2021/12/21
+ *    desc   :还有两地需要优化，处理最开始图片加载的问，最开始图片加载的大小不对，图片资源的获取现在是直接构建死的本地图片路径，这里如果要支持url的话要怎么处理
+ *    version: 1.0
+ */
+class PhotoView : View {
+
+
+    private lateinit var bitmap: Bitmap
+    private val mPaint = Paint()
+
+    /**
+     * 图像最初始时的x和y的坐标
+     */
+    var originalOffsetX = 0f
+    var originalOffsetY = 0f
+
+    //图像的偏移坐标
+    private var offSetX = 0f
+    private var offSetY = 0f
+
+    /**
+     * 放大的比例
+     */
+    private val OVER_SCALE_FACTOR = 1.5f
+
+    //当前的缩放比例
+    private var currentScale = 0f
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    //最小的缩放比例
+    private var smallScale = 0f
+
+    //最大的缩放比例
+    private var bigScale = 0f
+
+    //记录当前的状态是不是已经是放大
+    private var isEnlarge = false
+
+    /**
+     * 使用提供的MotionEvent检测各种手势和事件。 GestureDetector.OnGestureListener回调将在发生特定运动事件时通知用户。 此类应仅与通过触摸报告的MotionEvent一起使用（不要用于轨迹球事件）。 要使用这个类：
+    为您的View创建一个GestureDetector实例
+    在View.onTouchEvent(MotionEvent)方法中，确保您调用onTouchEvent(MotionEvent) 。 回调中定义的方法将在事件发生时执行。
+    如果监听GestureDetector.OnContextClickListener.onContextClick(MotionEvent)你必须在View.onGenericMotionEvent(MotionEvent)onGenericMotionEvent(MotionEvent)
+    中调用onGenericMotionEvent(MotionEvent) View.onGenericMotionEvent(MotionEvent) 。
+     */
+    private lateinit var gestureDetector: GestureDetector
+
+    /**
+     * 此类封装了滚动，并具有超出滚动操作边界的能力。 在大多数情况下，此类是Scroller替代品
+     */
+    private lateinit var overScroller: OverScroller
+
+    private lateinit var scaleGestureDetector: ScaleGestureDetector
+
+    constructor(context: Context?) : super(context) {
+        init(context)
+    }
+
+    constructor(context: Context?, attrs: AttributeSet?) : super(context, attrs) {
+        init(context)
+    }
+
+    constructor(context: Context?, attrs: AttributeSet?, defStyleAttr: Int) : super(
+        context,
+        attrs,
+        defStyleAttr
+    ) {
+        init(context)
+    }
+
+    private fun init(context: Context?) {
+        //获取bitmap
+        bitmap =
+            ImageUtils.instant.getBitmapBySize(context!!, R.drawable.test, ConverUtils.dp2px(300f))
+        //注册手势监听类
+        gestureDetector = GestureDetector(context, gestureDetectorListener)
+        //为了实现在滑动到边缘的回弹效果
+        overScroller = OverScroller(context)
+        //缩放操作
+        scaleGestureDetector = ScaleGestureDetector(context, PhotoScaleGestureListener())
+    }
+    /**
+    绘制这里其实一直都是以原始的x，y进行绘制的，不过是在发生变化的时候，偏移画布（将需要的内容展示到屏幕上）和缩放大画布（原本需要1像素，现在需要2个或者更多来展示）
+    */
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        //currentScale当前的比例是不断变化的，这样计算获取到当前需要变化的比例，例如最开始的适合currentScale = smallScale，那么scaleFaction = 0，translate的操作就是（0，0）不需要偏移
+        val scaleFaction = (currentScale - smallScale) / (bigScale - smallScale)
+        //画布偏移
+        canvas.translate(offSetX * scaleFaction, offSetY * scaleFaction)
+        //根据比例以控件中心为轴心进行缩放
+        canvas.scale(currentScale, currentScale, width / 2f, height / 2f)
+        //绘制图像
+        canvas.drawBitmap(bitmap, originalOffsetX, originalOffsetY, mPaint)
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        originalOffsetX = (width - bitmap.width) / 2f
+        originalOffsetY = (height - bitmap.height) / 2f
+        //放大的比例，最大的放大比例取宽高中小的那个，因为它的比例大
+        if ((bitmap.width / bitmap.height) &gt; width / height) {
+            //说明是宽大于高的
+            smallScale = (width / bitmap.width).toFloat()
+            bigScale = (height / bitmap.height).toFloat() * OVER_SCALE_FACTOR
+        } else {
+            smallScale = (height / bitmap.height).toFloat()
+            bigScale = (width / bitmap.width).toFloat() * OVER_SCALE_FACTOR
+        }
+        currentScale = smallScale
+    }
+
+    override fun onTouchEvent(event: MotionEvent?): Boolean {
+        var result = scaleGestureDetector.onTouchEvent(event)
+        if (!scaleGestureDetector.isInProgress) {
+            result = gestureDetector.onTouchEvent(event)
+        }
+        return result
+    }
+
+    private var scaleAnimator: ObjectAnimator? = null
+
+    private fun getScaleAnimation(smallScale: Float, bigScale: Float): ObjectAnimator {
+        if (scaleAnimator == null) {
+            //缩放处理的为currentScale这个属性，范围为smallScale到bigScale
+            scaleAnimator = ObjectAnimator.ofFloat(this, &quot;currentScale&quot;, 0f)
+        }
+        scaleAnimator!!.setFloatValues(smallScale, bigScale)
+        return scaleAnimator!!
+    }
+
+    /**
+     * 控制边界范围
+     */
+    private fun fixOffsets() {
+        //x轴的偏移必须在一个范围之内，这个范围的最大值是大图的最大宽度-控件宽度的一半，这里是在图像的右边，而在左边是的是负值的范围，y轴类似
+        offSetX = Math.min(offSetX, (bitmap.width * bigScale - width) / 2f)
+        offSetX = Math.max(offSetX, -(bitmap.width * bigScale - width) / 2f)
+        offSetY = Math.min(offSetY, (bitmap.height * bigScale - height) / 2f)
+        offSetY = Math.max(offSetY, -(bitmap.height * bigScale - height) / 2f)
+    }
+
+
+    /**
+     * 手势处理类
+     */
+    val gestureDetectorListener = object : GestureDetector.SimpleOnGestureListener() {
+
+        /**
+         * 一个事件的开始是从down开始的，如果down没有获取到
+         * 那么后续的事件也不会再消费，所以这里为了实现双击的效果，需要消费事件
+         */
+        override fun onDown(e: MotionEvent?): Boolean {
+            return true
+        }
+
+        /**
+         * 显示水波纹
+         */
+        override fun onShowPress(e: MotionEvent?) {
+            super.onShowPress(e)
+        }
+
+        /**
+         * 单击事件的，up事件时回掉
+         */
+        override fun onSingleTapUp(e: MotionEvent?): Boolean {
+            return super.onSingleTapUp(e)
+        }
+
+        /**
+         * 滑动是进行图像移动
+         */
+        override fun onScroll(
+            e1: MotionEvent?,
+            e2: MotionEvent?,
+            distanceX: Float,
+            distanceY: Float
+        ): Boolean {
+            //只在大图的情况下进行触发
+            if (isEnlarge) {
+                offSetX -= distanceX
+                offSetY -= distanceY
+                fixOffsets()
+                invalidate()
+            }
+            return super.onScroll(e1, e2, distanceX, distanceY)
+        }
+
+        /**
+         * 长按
+         */
+        override fun onLongPress(e: MotionEvent?) {
+            super.onLongPress(e)
+        }
+
+        /**
+         * 惯性滑动，在惯性滑动的情况下实现一个回弹的效果
+         */
+        override fun onFling(
+            e1: MotionEvent?,
+            e2: MotionEvent?,
+            velocityX: Float,
+            velocityY: Float
+        ): Boolean {
+            if (isEnlarge) {
+                //overX – 超出范围。 如果 &gt; 0，则可以在任一方向进行水平翻转。
+                //overY – 超出范围。 如果 &gt; 0，则可以在任一方向进行垂直翻转
+                overScroller.fling(
+                    offSetX.toInt(), offSetY.toInt(), velocityX.toInt(), velocityY.toInt(),
+                    (-(bitmap.width * bigScale - width) / 2).toInt(),
+                    ((bitmap.width * bigScale - width) / 2).toInt(),
+                    (-(bitmap.height * bigScale - height) / 2).toInt(),
+                    ((bitmap.height * bigScale - height) / 2).toInt(), 300, 300
+                )
+                postOnAnimation(FlishRunner())
+            }
+            return super.onFling(e1, e2, velocityX, velocityY)
+        }
+
+        /**
+         * 点击在up以及Tag时会触发回掉
+         */
+        override fun onSingleTapConfirmed(e: MotionEvent?): Boolean {
+            return super.onSingleTapConfirmed(e)
+        }
+
+        /**
+         * 双击事件的的Event回掉，包括有down，move，up
+         */
+        override fun onDoubleTapEvent(e: MotionEvent?): Boolean {
+            return super.onDoubleTapEvent(e)
+        }
+
+        override fun onContextClick(e: MotionEvent?): Boolean {
+            return super.onContextClick(e)
+        }
+
+        /**
+         * 双击事件的第二次down事件会进行回掉
+         */
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+            isEnlarge = !isEnlarge
+            if (isEnlarge) {
+                //实现的效果是点击是点击什么地方放大什么地方，所以需要对坐标进行偏移处理
+                offSetX = (e.x - width / 2) - (e.x - width / 2) * bigScale / smallScale
+                offSetY = (e.y - height / 2) - (e.y - height / 2) * bigScale / smallScale
+                fixOffsets()
+                //通过动画来进行缩放处理
+                getScaleAnimation(smallScale, bigScale).start()
+            } else {
+                //动画反转
+                val tempScale = Math.min(currentScale, bigScale)
+                getScaleAnimation(smallScale, tempScale).reverse()
+            }
+            return super.onDoubleTap(e)
+        }
+    }
+
+    inner class FlishRunner : Runnable {
+        override fun run() {
+            //computeScrollOffset为true，说明动画还没结束
+            if (overScroller.computeScrollOffset()) {
+                //currX获取的是当原点和现在位置的绝对距离，也就是我们需要的偏移量，因为需要回弹处理，这里不需要处理边界问题
+                offSetX = overScroller.currX.toFloat()
+                offSetY = overScroller.currY.toFloat()
+                invalidate()
+                postOnAnimation(this)
+            }
+        }
+    }
+
+    /**
+     * 手势发生时接收通知的监听器。 如果你想监听所有不同的手势，那么实现这个接口。 如果您只想侦听子集，
+     * 扩展ScaleGestureDetector.SimpleOnScaleGestureListener可能会更容易。 应用程序将按以下顺序接收事件：
+    一个onScaleBegin(ScaleGestureDetector)
+    零个或多个onScale(ScaleGestureDetector)
+    一个onScaleEnd(ScaleGestureDetector)
+     */
+    inner class PhotoScaleGestureListener : ScaleGestureDetector.OnScaleGestureListener {
+
+        var initScale = 0f;
+
+        /**
+         * 响应正在进行的手势的缩放事件。 通过指针运动报告
+         * @param
+         * @return 检测器是否应将此事件视为已处理。 如果事件未被处理，探测器将继续累积运动，直到事件被处理。 例如，如果应用程序只想在更改大于 0.01 时更新缩放因子，这会很有用。
+         */
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            currentScale = initScale * detector.scaleFactor
+            isEnlarge = currentScale &gt; smallScale
+            invalidate()
+            return false
+        }
+
+        /**
+         * @return 检测器是否应继续识别此手势。 例如，如果手势开始于有意义的区域之外的焦点，则 onScaleBegin() 可能会返回 false 以忽略手势的其余部分
+         */
+        override fun onScaleBegin(detector: ScaleGestureDetector?): Boolean {
+            //这是缩放比例不都是从零开始的
+            initScale = currentScale
+            return true
+        }
+
+        /**
+         * 手势缩放结束时，处理边界问题，可以在双指时展示更大或更小，但当结束时恢复到边界范围
+         */
+        override fun onScaleEnd(detector: ScaleGestureDetector?) {
+            if (currentScale &gt; bigScale) {
+                getScaleAnimation(bigScale, currentScale).reverse()
+            } else if (currentScale &lt; smallScale) {
+                getScaleAnimation(currentScale, smallScale).start()
+            }
+        }
+    }
+}
+</code></pre>
+<p>预留未完成：<br>
+1.加载的图片比例需要计算，现在是固定为300dp<br>
+2.图片的加载功能没有</p>
+<hr>
+<h2 id="场景2多点触控">场景2：多点触控</h2>
+<p>在Android上是支持多点触控的，注意的点就是需要是使用getActionMasked，原来的getAction只能获取到index为0的手指事件，这里需要注意的时事件的触发时机，并且所有的手指的Even都是通过一个数组进行存储的，当抬起时从数组中移除这个，但是当有新的手指落下时，会先分配到之前抬起的index上。</p>
+<pre><code class="language-java">package com.arms.flowview.photoView
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.util.AttributeSet
+import android.view.MotionEvent
+import android.view.View
+import com.arms.flowview.R
+import com.arms.flowview.utils.ConverUtils
+import com.arms.flowview.utils.ImageUtils
+import com.orhanobut.logger.Logger
+
+/**
+ *    author : heyueyang
+ *    time   : 2021/12/27
+ *    desc   :
+ *    version: 1.0
+ */
+class MultiPointView : View {
+
+    private lateinit var bitmap: Bitmap
+    private lateinit var paint: Paint
+
+    // 手指滑动偏移值
+    private var offsetX = 0f
+    private var offsetY = 0f
+
+    // 按下时的x,y坐标
+    private var downX = 0f
+    private var downY = 0f
+
+    // 上一次的偏移值
+    private var lastOffsetX = 0f
+    private var lastOffsetY = 0f
+
+    // 当前按下的pointId
+    private var currentPointId = 0
+
+    constructor(context: Context?) : super(context)
+    constructor(context: Context?, attrs: AttributeSet?) : super(context, attrs)
+    constructor(context: Context?, attrs: AttributeSet?, defStyleAttr: Int) : super(
+        context,
+        attrs,
+        defStyleAttr
+    )
+
+    init {
+        init(context)
+    }
+
+    private fun init(context: Context?) {
+        bitmap =
+            ImageUtils.instant.getBitmapBySize(context!!, R.drawable.dm1, ConverUtils.dp2px(300f))
+        paint = Paint().apply {
+            isAntiAlias = true
+        }
+    }
+
+    override fun draw(canvas: Canvas) {
+        super.draw(canvas)
+        canvas.drawBitmap(bitmap, offsetX, offsetY, paint)
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        //要想处理多指必须使用actionMasked
+        when (event.actionMasked) {
+            //DOWN只会在第一根手指落下时触发
+            MotionEvent.ACTION_DOWN -&gt; {
+                downX = event.x
+                downY = event.y
+
+                lastOffsetX = offsetX
+                lastOffsetY = offsetY
+                currentPointId = 0
+            }
+            MotionEvent.ACTION_MOVE -&gt; {
+                //通过id获取当前的下标,这里实现的效果是，在前一根手指
+                val index = event.findPointerIndex(currentPointId)
+
+                offsetX = lastOffsetX + event.getX(index) - downX
+                offsetY = lastOffsetY + event.getY(index) - downY
+                invalidate()
+            }
+            MotionEvent.ACTION_POINTER_DOWN -&gt; {
+                //多指操作的情况下，从第二个手指落下时会触发
+                //获取当前的落下的下标
+                val actionIndex = event.actionIndex
+                Logger.e(&quot;actionIndex:${actionIndex}&quot;)
+                //通过下标获取对应的手指ID，
+                currentPointId = event.getPointerId(actionIndex)
+                downX = event.getX(actionIndex)
+                downY = event.getY(actionIndex)
+                lastOffsetX = offsetX
+                lastOffsetY = offsetY
+            }
+            MotionEvent.ACTION_POINTER_UP -&gt; {
+                //非最后一根手指抬起时触发
+                var upIndex = event.actionIndex
+                val pointId = event.getPointerId(upIndex)
+                //值处理当前正在相应事件的手指
+                if (pointId == currentPointId) {
+                    //在手指抬起后获取下一个相应的下标
+                    val nextLastIndex =
+                        if (upIndex == event.pointerCount - 1) {
+                            event.pointerCount - 2
+                        } else {
+                            upIndex++
+                        }
+                    currentPointId = event.getPointerId(nextLastIndex)
+
+                    downX = event.getX(nextLastIndex)
+                    downY = event.getY(nextLastIndex)
+                    lastOffsetX = offsetX
+                    lastOffsetY = offsetY
+                }
+            }
+            //最后一根手指抬起时触发
+            MotionEvent.ACTION_UP-&gt;{
+
+            }
+        }
+        return true
+    }
+
+}
+</code></pre>
+<h1 id="项目地址"><a href="https://github.com/Arms-merchants/Study/tree/main/UI/FlowView/app/src/main/java/com/arms/flowview/photoView">项目地址</a></h1>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E5%9C%BA%E6%99%AF1%E5%AE%9E%E7%8E%B0%E4%B8%80%E4%B8%AA%E7%AE%80%E5%8D%95%E7%9A%84photoview%E7%9B%B8%E5%85%B3%E5%8A%9F%E8%83%BD%E5%8C%85%E6%8B%AC%E5%8F%8C%E5%87%BB%E6%94%BE%E5%A4%A7%E6%94%BE%E5%A4%A7%E6%8B%96%E5%8A%A8%E5%8F%8C%E6%8C%87%E7%BC%A9%E6%94%BE">场景1：实现一个简单的PhotoView，相关功能包括，双击放大，放大拖动，双指缩放</a>
+<ul>
+<li><a href="#%E5%8A%9F%E8%83%BD%E5%88%86%E6%9E%90">功能分析：</a></li>
+<li><a href="#%E5%AE%8C%E6%95%B4%E7%9A%84%E4%BB%A3%E7%A0%81">完整的代码：</a></li>
+</ul>
+</li>
+<li><a href="#%E5%9C%BA%E6%99%AF2%E5%A4%9A%E7%82%B9%E8%A7%A6%E6%8E%A7">场景2：多点触控</a></li>
+</ul>
+</li>
+<li><a href="#%E9%A1%B9%E7%9B%AE%E5%9C%B0%E5%9D%80">项目地址</a></li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/fragment-qian-tao-fragment-tong-guo-viewmodel-jin-xing-shu-ju-tong-bu-de-cao-zuo/">
+              <h3 class="post-title">
+                Fragment嵌套Fragment通过ViewModel进行数据同步的操作
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

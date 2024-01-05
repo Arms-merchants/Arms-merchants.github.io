@@ -1,0 +1,235 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Binder--TODO | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1704441990587">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Binder--TODO | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="Framework中的3节关于Binder的课程TODO！！！
+等后续在重新整理这个课程！！
+1.是什么？
+
+1.进程间通信机制
+2.也是一个驱动
+3.Binder.jave--&gt;实现Ibinder --跨进程的能力
+
+自己创建的进程..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1704441990587" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Binder--TODO
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-01-19
+              </span>
+              <span>
+                5 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>Framework中的3节关于Binder的课程TODO！！！<br>
+等后续在重新整理这个课程！！</p>
+<p>1.是什么？</p>
+<ul>
+<li>1.进程间通信机制</li>
+<li>2.也是一个驱动</li>
+<li>3.Binder.jave--&gt;实现Ibinder --跨进程的能力</li>
+</ul>
+<p>自己创建的进程：webView、视频播放、音乐、大图浏览、推送<br>
+系统服务：打电话、闹钟等</p>
+<p>优点：<br>
+内存--》每多出一个进程当前App可使用的内存空间增加<br>
+打印出虚拟机分配的内存空间：<br>
+adb shell<br>
+getprop dalvik.vm.heapsize</p>
+<p>风险隔离--》单独进程的崩溃不会影响到其他的进程</p>
+<p>进程间是如何进行通信的？<br>
+内存划分：内存被操作系统划分为两块：用户空间和内核空间，<br>
+用户空间是用户代码运行的地方，内核空间是内核代码运行的地方。为了安全，它们是隔离的，即使用户的程序崩溃，内核也不受影响。<br>
+32位系统，即2·32，即总可访问地址为4G，内核空间为1G，用户空间为3G<br>
+64位系统，低位0～47位才是有效的可变地址（寻址空间256T）高位48～63位全补0或1.一般高位全补0对应的地址空间是用户空间，高位全补1的是内核空间。</p>
+<p>在一个app不同进程间，每个进程的用户空间是单独存在并且隔离的，而它们的内核空间映射到的物理地址是同一块区域。<br>
+用户空间和内核空间都是虚拟内存的概念，它们都需要映射到具体的物理内存上。</p>
+<p>每个进程所对应的内存地址的相互隔离的，如果需要在进程之前传递数据，那么就需要进行进程间通信（IPC）。常见的进程间通信的方式有：<br>
+共享内存、Socket、Binder等<br>
+进度A 进程B<br>
+在共享内存的情况下，进程A的用户空间、进程B的用户空间以及内核空间它们都指向同一块物理内存地址，其中一个操作两个进程的用户空间都可以访问到和可操作，因为是同一块物理内存，所以没有发生数据的拷贝，但需要考虑多进程操作数据同步的问题。<br>
+Socket是进程A和进程B的用户空间指向不同的物理内存，内核空间都指向同一块物理内存，进程A向进程B发送数据时，首先从A的用户空间所指向的物理内存拷贝到内核空间指向的物理地址，发生第一个拷贝，然后再从内核空间指向的物理内存拷贝到进程B的用户空间指向的物理内存，发生第二次拷贝<br>
+Binder话是进程B的用户空间和内核空间指向同一块物理内存，当进程A的用户空间将数据拷贝到内核空间后，进程B就可以访问到，只发生了一次拷贝。</p>
+<p>MMAP技术原理：<br>
+Linux通过将一个虚拟内存区域与磁盘上的对象关联起来，以初始化这个虚拟内存区域的内容，这个过程称为内存映射（memory mapping）</p>
+<p>Intent传输数据为什么不能超过1M，因为Intent是通过Binder进程数据传输的，而Binder的传输上限是1M-8K   ((1<em>1024</em>1024)-(4096*2))  异步传输的大小为这个容量的一半（1M-8K）/2 同步传输的话是可以占用全部容量</p>
+<p>包括像是AMS，PMS相关的系统服务的时候都是需要跨进程的，系统的服务有很多，如果每一个系统服务都需要获取到对应的具柄Ibinder那么管理就会相当困难，那么这里就出现的ServiceManager，它是整个系统服务的大管家，系统服务都会注册到ServiceManager中，并且它的handler是固定（handler = 0）的。<br>
+<img src="https://arms-merchants.github.io//post-images/1644825002790.png" alt="" loading="lazy"></p>
+<p>ServieManager的初始化和注册</p>
+<p>服务的注册和获取，线程池管理</p>
+<p>从java --- AMS</p>
+<p>如何注册到SM中</p>
+<p>getIServiceManager().addService(name, service, false);</p>
+<ul>
+<li>getIServiceManager --- new ServiceManagerProxy(new BinderProxy())
+<ul>
+<li>ServiceManagerNative.asInterface(BinderInternal.getContextObject())
+<ul>
+<li>BinderInternal.getContextObject --- 返回 BinderProxy 对象
+<ul>
+<li>ProcessState::self()-&gt;getContextObject：创建一个BpBinder</li>
+<li>javaObjectForIBinder -- BinderProxy 和 BpBinder 互相绑定</li>
+</ul>
+</li>
+<li>ServiceManagerNative.asInterface
+<ul>
+<li>返回 ServiceManagerProxy</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li>addService</li>
+</ul>
+<hr>
+<p>AMS<br>
+1.AMS的启动流程</p>
+<p>OOMadj 杀进程相关（如果做系统保就会和这个设计相关）</p>
+<p>系统启动流程<br>
+从按电源开机键到LaunchApp的启动<br>
+系统引导到系统内核的启动（Kernel），Kernel启动后在用户空间启动init进程-》内核空间<br>
+init进程的pid固定为1，并且是用户进程的第一个进程。<br>
+init（pid =1 ）的进程-》解析init.rc配置文件并启动Zygote进程</p>
+<p>App的启动流程<br>
+在LuanchApp上点击某个应用图标到应用的MainActivity的创建</p>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

@@ -1,0 +1,313 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Fragment嵌套Fragment通过ViewModel进行数据同步的操作 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1704441990587">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Fragment嵌套Fragment通过ViewModel进行数据同步的操作 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="一个场景加上源码的分析
+1.场景
+一个常见的场景，Fragment中有一个TabView和一个ViewPager构成的界面，Tab上展示ViewPager中Rv的某个数量（例如消息，未读的消息数量），消息的数量接口是在外层的Fragment..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1704441990587" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Fragment嵌套Fragment通过ViewModel进行数据同步的操作
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-12-27
+              </span>
+              <span>
+                5 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1640522293257-9454cc4a762f?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=774&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h2 id="一个场景加上源码的分析">一个场景加上源码的分析</h2>
+<h3 id="1场景">1.场景</h3>
+<p>一个常见的场景，Fragment中有一个TabView和一个ViewPager构成的界面，Tab上展示ViewPager中Rv的某个数量（例如消息，未读的消息数量），消息的数量接口是在外层的Fragment中请求的，但是当我们在内层的Fragment中点击消息条目时需要修改这个数量，以往的做法是通过事件总线发个通知然后更新等等操作。现在我们既然使用有ViewModel，那个在让内层的Fragment获取外层的ViewModel，然后修改数量后postValue就可以，但是实际的效果和预想不相符，并没有引起数据的刷新。</p>
+<h3 id="2代码分析">2.代码分析</h3>
+<p>修改之前的代码：</p>
+<pre><code class="language-java">    private fun handleMessageRead(index: Int) {
+        mAdapter?.getItem(index)?.isRead = AppConstant.YES
+        mAdapter?.notifyItemChanged(index)
+        if (mModel?.type == StatusConfigs.MessageStatus.MESSAGE) {
+            if (parentFragmentModel == null) {
+                parentFragmentModel = getFragmentViewModel(MessageModel::class.java)
+            }
+            val value = parentFragmentModel!!.unReadCount.value
+            //在这里获取到value是null
+            value?.apply {
+                this.unreadCount -= 1
+                parentFragmentModel?.unReadCount?.postValue(this)
+            }
+        }
+    }
+</code></pre>
+<p>获取到的value是null，不应该啊，网络请求应该是已经给赋值了。最终看了一下两个parentFragmentModel，发现在两个fragment中获取到的是两个不同的对象。<br>
+修改后台的代码:</p>
+<pre><code class="language-java">    private fun handleMessageRead(index: Int) {
+        if (mAdapter?.getItem(index)?.isRead == AppConstant.NO) {
+            mAdapter?.getItem(index)?.isRead = AppConstant.YES
+            mAdapter?.notifyItemChanged(index)
+            if (mModel?.type == StatusConfigs.MessageStatus.MESSAGE) {
+                if (parentFragmentModel == null) {
+                    parentFragmentModel = ViewModelProvider(
+                        requireActivity(),
+                        ViewModelProvider.NewInstanceFactory()
+                    ).get(MessageModel::class.java)
+                }
+                val value = parentFragmentModel!!.unReadCount.value
+                value?.apply {
+                    value.unreadCount -=1
+                    parentFragmentModel?.unReadCount?.postValue(this)
+                }
+            }
+        }
+    }
+</code></pre>
+<p>这两个区别就是getFragmentViewModel(MessageModel::class.java)是封装在Base里的一个方法来获取对应的ViewModel：</p>
+<pre><code class="language-java">    protected open fun &lt;T : ViewModel?&gt; getFragmentViewModel(modelClass: Class&lt;T&gt;): T {
+        if (mFragmentProvider == null) {
+            mFragmentProvider = ViewModelProvider(this)
+        }
+        return mFragmentProvider!!.get(modelClass)
+    }
+</code></pre>
+<p>两个不同就是在构建ViewModelProvider是一个传入的是当前的Fragment一个是activity，那么它们为什么会引起不一样的结果？</p>
+<h3 id="3源码分析">3.源码分析</h3>
+<pre><code class="language-java">   public ViewModelProvider(@NonNull ViewModelStoreOwner owner, @NonNull Factory factory) {
+        this(owner.getViewModelStore(), factory);
+    }
+</code></pre>
+<p>这里的owner就是我们传入的activity或者fragment，分别看一下它们的getViewModelStore的实现：<br>
+activity：</p>
+<pre><code class="language-java">    @NonNull
+    @Override
+    public ViewModelStore getViewModelStore() {
+        if (getApplication() == null) {
+            throw new IllegalStateException(&quot;Your activity is not yet attached to the &quot;
+                    + &quot;Application instance. You can't request ViewModel before onCreate call.&quot;);
+        }
+        if (mViewModelStore == null) {
+            NonConfigurationInstances nc =
+                    (NonConfigurationInstances) getLastNonConfigurationInstance();
+            if (nc != null) {
+                // Restore the ViewModelStore from NonConfigurationInstances
+                mViewModelStore = nc.viewModelStore;
+            }
+            if (mViewModelStore == null) {
+                mViewModelStore = new ViewModelStore();
+            }
+        }
+        return mViewModelStore;
+    }
+</code></pre>
+<p>fragment:</p>
+<pre><code class="language-java">    @NonNull
+    ViewModelStore getViewModelStore(@NonNull Fragment f) {
+        ViewModelStore viewModelStore = mViewModelStores.get(f.mWho);
+        if (viewModelStore == null) {
+            viewModelStore = new ViewModelStore();
+            mViewModelStores.put(f.mWho, viewModelStore);
+        }
+        return viewModelStore;
+    }
+</code></pre>
+<p>两者的差别不大，都是如果当前为null的话构建一个ViewModelStore返回，如果有的话直接返回，所以这个ViewModelStore是跟随不同的Fragment和Activity生命周期的，并且所属对象是不同的。<br>
+接下来我们再看一下获取ViewModel的get方法：</p>
+<pre><code class="language-java">   @NonNull
+    @MainThread
+    public &lt;T extends ViewModel&gt; T get(@NonNull Class&lt;T&gt; modelClass) {
+        String canonicalName = modelClass.getCanonicalName();
+        if (canonicalName == null) {
+            throw new IllegalArgumentException(&quot;Local and anonymous classes can not be ViewModels&quot;);
+        }
+        return get(DEFAULT_KEY + &quot;:&quot; + canonicalName, modelClass);
+    }
+
+   @NonNull
+    @MainThread
+    public &lt;T extends ViewModel&gt; T get(@NonNull String key, @NonNull Class&lt;T&gt; modelClass) {
+        //通过key在ViewModelStore中查找对应的ViewModel
+        ViewModel viewModel = mViewModelStore.get(key);
+        //判断获取到的viewModel是不是modelClass的实例对象，如果是的话返回当前的viewModel
+        if (modelClass.isInstance(viewModel)) {
+            if (mFactory instanceof OnRequeryFactory) {
+                ((OnRequeryFactory) mFactory).onRequery(viewModel);
+            }
+            return (T) viewModel;
+        } else {
+            //noinspection StatementWithEmptyBody
+            if (viewModel != null) {
+                // TODO: log a warning.
+            }
+        }
+        //执行到这说明对应的ViewModel没有找到，那么根据工厂不同来生成ViewModel
+        if (mFactory instanceof KeyedFactory) {
+            viewModel = ((KeyedFactory) (mFactory)).create(key, modelClass);
+        } else {
+            viewModel = (mFactory).create(modelClass);
+        }
+        //存储以及返回对应的viewModel
+        mViewModelStore.put(key, viewModel);
+        return (T) viewModel;
+    }
+</code></pre>
+<p>到这里我们也就能分析明白为什么在Fragment中传入this和activity的结果不同的原因了，这是因为生成的ViewModel所属的作用域是不同的，this的话只在当前的Fragment中生效，那么FragmentA和FragmentB分别去创建ViewModel它们是不同的，而如果传入的Activity，那么这个ViewModel的作用域是Activity级别的，所有依附于当前Activity中的Fragment通过activity这个owner获取同一个class的ViewModel都会是同一个。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#%E4%B8%80%E4%B8%AA%E5%9C%BA%E6%99%AF%E5%8A%A0%E4%B8%8A%E6%BA%90%E7%A0%81%E7%9A%84%E5%88%86%E6%9E%90">一个场景加上源码的分析</a>
+<ul>
+<li><a href="#1%E5%9C%BA%E6%99%AF">1.场景</a></li>
+<li><a href="#2%E4%BB%A3%E7%A0%81%E5%88%86%E6%9E%90">2.代码分析</a></li>
+<li><a href="#3%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90">3.源码分析</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/motion-dong-hua/">
+              <h3 class="post-title">
+                Motion动画
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

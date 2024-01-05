@@ -1,0 +1,185 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>在AndroidStudio Hedgehog中使用Bito插件错误的解决方案 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1704441990587">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="在AndroidStudio Hedgehog中使用Bito插件错误的解决方案 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="这段时间一直在AS中使用Bito这个基于ChatGPT的插件，当然了白漂为主，所以用的都是免费版的，不过一些问题基本都能解决，不能话就换一家🐶。
+不过吗在愉快的玩耍了一段时间，然后手不受控制的将AS更新到最新了，愉快不起来了。。。。
+GP..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1704441990587" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              在AndroidStudio Hedgehog中使用Bito插件错误的解决方案
+            </h2>
+            <div class="post-info">
+              <span>
+                2024-01-05
+              </span>
+              <span>
+                1 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1704319180538-f57994377412?q=80&amp;w=2787&amp;auto=format&amp;fit=crop&amp;ixlib=rb-4.0.3&amp;ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>这段时间一直在AS中使用Bito这个基于ChatGPT的插件，当然了白漂为主，所以用的都是免费版的，不过一些问题基本都能解决，不能话就换一家🐶。<br>
+不过吗在愉快的玩耍了一段时间，然后手不受控制的将AS更新到最新了，愉快不起来了。。。。</p>
+<h2 id="gpu-process-restarts-too-many-times-and-seems-to-be-unstable-try-to-restart-ide-or-disable-gpu-acceleration-completely">GPU process restarts too many times and seems to be unstable. Try to restart IDE or disable GPU acceleration completely.</h2>
+<p>然后Bito就加载不出来了，尝试将插件重装也一样的效果。最后只有降级回Giraffe版本才能正常使用。<br>
+不过最近在Bito的github仓库的issues中看到了个解决方案，尝试成功解决了我的问题，如何你是和我一样的错误，可以考虑尝试该方法：<br>
+1.在Help菜单中选择Find Action<br>
+2.输入Registry选择Registry...<br>
+3.在出现的列表中找到ide.browser.jcef.sandbox.enable选项，将它禁用调<br>
+4.重启<br>
+然后应该能继续调戏BitoAi了。</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#gpu-process-restarts-too-many-times-and-seems-to-be-unstable-try-to-restart-ide-or-disable-gpu-acceleration-completely">GPU process restarts too many times and seems to be unstable. Try to restart IDE or disable GPU acceleration completely.</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/shi-yong-compose-lai-kai-fa-wanandroidapp-peng-dao-de-yi-xie-wen-ti-ji-jin/">
+              <h3 class="post-title">
+                使用Compose来开发WanAndroidApp碰到的一些问题集锦
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

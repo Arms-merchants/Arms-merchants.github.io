@@ -1,0 +1,446 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Android一键打包上传蒲公英并发送消息到企业微信 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1704441990587">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="Android一键打包上传蒲公英并发送消息到企业微信 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="实现一键打包上传蒲公英并发送消息到企业微信，涉及到的点就是使用HttpURLConnection来进行数据的传输，两个gradle中方法的调用，以及企业微信api和蒲公英上传api的调用:
+1.上传蒲公英的文件
+import groovy...." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1704441990587" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              Android一键打包上传蒲公英并发送消息到企业微信
+            </h2>
+            <div class="post-info">
+              <span>
+                2021-11-12
+              </span>
+              <span>
+                9 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1636496268732-fb1e5d295d23?ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;ixlib=rb-1.2.1&amp;auto=format&amp;fit=crop&amp;w=687&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>实现一键打包上传蒲公英并发送消息到企业微信，涉及到的点就是使用HttpURLConnection来进行数据的传输，两个gradle中方法的调用，以及企业微信api和蒲公英上传api的调用:</p>
+<h2 id="1上传蒲公英的文件">1.上传蒲公英的文件</h2>
+<pre><code class="language-java">import groovy.json.JsonSlurper
+//需要通过这种方式才能去调用给到另外一个gradle中的方法，调用的也不是直接去调用给，也是通过ext中的方法函数调用
+apply([plugin: 'com.android.application', from: project.uri(file(&quot;../packapk/send_message.gradle&quot;))])
+
+afterEvaluate {
+    android.applicationVariants.each { variant -&gt;
+        String variantName = variant.name.capitalize()
+        def task = tasks.create(&quot;apkUploadPGY${variantName}&quot;)
+        task.group = &quot;apk_upload&quot;
+        //依赖微信混淆打包
+        task.dependsOn(&quot;resguard${variantName}&quot;)
+        task.doLast {
+            def currentBuildType = variant.buildType
+            def changeLogPath = new File(project.rootDir, 'packapk/apk_changelog').path
+            def apkFileDir = new File(
+                    project.buildDir,
+                    &quot;outputs/apk/${variant.flavorName}/${variant.buildType.name}&quot;)
+            def uploadFile = findApkFile(apkFileDir)
+            if (uploadFile == null || !uploadFile.exists()) {
+                throw new GradleException(&quot;Could not find apk!&quot;)
+            }
+            def appName = currentBuildType.getManifestPlaceholders()[&quot;APP_NAME&quot;]
+            def appUploadLog = currentBuildType.getManifestPlaceholders()[&quot;APK_UPLOAD_LOG&quot;]
+            def pgyToken = currentBuildType.getManifestPlaceholders()[&quot;PGY_TOKEN&quot;]
+            def wxPushToke = project.QYWX_ROBOT_KEY
+            def versionCode = project.android.defaultConfig.versionName
+            println(&quot;*********** start: uploadFile:${uploadFile.path} ******&quot;)
+            def uploadApkUrl = uploadApk(uploadFile, pgyToken, appName + appUploadLog)
+            if (uploadApkUrl != null) {
+                project.ext.fun.call(wxPushToke, changeLogPath, appName, versionCode, appUploadLog, uploadApkUrl)
+            }
+            println(&quot;*********** end: uploadFile ******&quot;)
+        }
+    }
+}
+
+/*def findApkFile(File apkFile) {
+    println(&quot;apkFile:&quot; + apkFile.name)
+    if (apkFile.isDirectory()) {
+        def files = apkFile.listFiles()
+        for (int i = 0; i &lt; files.length; i++) {
+            def findFile = findApkFile(files[i])
+            if (findFile != null) {
+                return findFile
+            }
+        }
+    } else if (apkFile.name.endsWith(&quot;.apk&quot;)) {
+        return apkFile
+    } else {
+        return null
+    }
+}*/
+
+/**
+ * 查找apk文件，上面的方法因为我们项目中使用了资源混淆的处理，会导致在内层还有一个apk文件，所以这里直接找第一层的，根据需要修改使用方法即可
+ * @param apkFile
+ * @return
+ */
+static def findApkFile(File apkFile) {
+    def files = apkFile.listFiles()
+    for (int i = 0; i &lt; files.length; i++) {
+        if (files[i].name.endsWith(&quot;.apk&quot;)) {
+            return files[i]
+        }
+    }
+    return null
+}
+
+def uploadApk(File uploadApkFile, String apiKey, String titleName) {
+    // 查找上传的 apk 文件, 这里需要换成自己 apk 路径
+    println(&quot;uploadApk:&quot; + uploadApkFile.absolutePath + &quot;--&quot; + uploadApkFile.exists())
+    if (uploadApkFile == null || !uploadApkFile.exists()) {
+        throw new RuntimeException(&quot;apk file not exists!&quot;)
+    }
+    println &quot;*************** upload start ***************&quot;
+    String BOUNDARY = UUID.randomUUID().toString(); // 边界标识 随机生成
+    String PREFIX = &quot;--&quot;, LINE_END = &quot;\r\n&quot;;
+    String CONTENT_TYPE = &quot;multipart/form-data&quot;; // 内容类型
+    try {
+        URL url = new URL(&quot;https://www.pgyer.com/apiv2/app/upload&quot;);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setReadTimeout(30000);
+        conn.setConnectTimeout(30000);
+        conn.setDoInput(true); // 允许输入流
+        conn.setDoOutput(true); // 允许输出流
+        conn.setUseCaches(false); // 不允许使用缓存
+        conn.setRequestMethod(&quot;POST&quot;); // 请求方式
+        conn.setRequestProperty(&quot;Charset&quot;, &quot;UTF-8&quot;); // 设置编码
+        conn.setRequestProperty(&quot;connection&quot;, &quot;keep-alive&quot;);
+        conn.setRequestProperty(&quot;Content-Type&quot;, CONTENT_TYPE + &quot;;boundary=&quot; + BOUNDARY);
+        DataOutputStream dos = new DataOutputStream(conn.getOutputStream());
+
+        StringBuffer sb = new StringBuffer();
+        sb.append(PREFIX).append(BOUNDARY).append(LINE_END);//分界符
+        sb.append(&quot;Content-Disposition: form-data; name=\&quot;&quot; + &quot;_api_key&quot; + &quot;\&quot;&quot; + LINE_END);
+        sb.append(&quot;Content-Type: text/plain; charset=UTF-8&quot; + LINE_END);
+        //sb.append(&quot;Content-Transfer-Encoding: 8bit&quot; + LINE_END);
+        sb.append(LINE_END);
+        sb.append(apiKey);//替换成你再蒲公英上申请的apiKey
+        sb.append(LINE_END);//换行！
+        //添加备注说明更新
+        sb.append(PREFIX).append(BOUNDARY).append(LINE_END);//分界符
+        sb.append(&quot;Content-Disposition: form-data; name=\&quot;&quot; + &quot;buildUpdateDescription&quot; + &quot;\&quot;&quot; + LINE_END);
+        sb.append(&quot;Content-Type: text/plain; charset=UTF-8&quot; + LINE_END);
+        //sb.append(&quot;Content-Transfer-Encoding: 8bit&quot; + LINE_END);
+        sb.append(LINE_END);
+        sb.append(titleName);//替换成你再蒲公英上申请的apiKey
+        sb.append(LINE_END);//换行！
+
+        if (uploadApkFile != null) {
+            /**
+             * 当文件不为空，把文件包装并且上传
+             */
+            sb.append(PREFIX);
+            sb.append(BOUNDARY);
+            sb.append(LINE_END);
+            /**
+             * 这里重点注意： name里面的值为服务器端需要key 只有这个key 才可以得到对应的文件
+             * filename是文件的名字，包含后缀名的 比如:abc.png
+             */
+            sb.append(&quot;Content-Disposition: form-data; name=\&quot;file\&quot;; filename=\&quot;&quot; + uploadApkFile.getName() + &quot;\&quot;&quot; + LINE_END);
+            sb.append(&quot;Content-Type: application/octet-stream; charset=UTF-8&quot; + LINE_END);
+            sb.append(LINE_END);
+            dos.write(sb.toString().getBytes())
+
+            InputStream is = new FileInputStream(uploadApkFile)
+            byte[] bytes = new byte[1024];
+            int len = 0;
+            while ((len = is.read(bytes)) != -1) {
+                dos.write(bytes, 0, len);
+            }
+            is.close();
+            dos.write(LINE_END.getBytes());
+            byte[] end_data = (PREFIX + BOUNDARY + PREFIX + LINE_END).getBytes();
+            dos.write(end_data);
+            dos.flush();
+            /**
+             * 获取响应码 200=成功 当响应成功，获取响应的流
+             */
+            int res = conn.getResponseCode();
+            if (res == 200) {
+                println(&quot;Upload request success&quot;);
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()))
+                StringBuffer ret = new StringBuffer();
+                String line
+                while ((line = br.readLine()) != null) {
+                    ret.append(line)
+                }
+                String result = ret.toString();
+                println(&quot;Upload result : &quot; + result);
+
+                def resp = new JsonSlurper().parseText(result)
+                println result
+                println &quot;------url:https://www.pgyer.com/${resp.data.buildShortcutUrl}&quot;
+                println &quot;*************** upload finish ***************&quot;
+                return &quot;https://www.pgyer.com/${resp.data.buildShortcutUrl}&quot;
+            } else {
+                println &quot;Upload request fail&quot;
+            }
+        }
+    } catch (MalformedURLException e) {
+        e.printStackTrace();
+    } catch (IOException e) {
+        e.printStackTrace();
+    }
+    return null
+}
+</code></pre>
+<h2 id="2企业微信消息的发送">2.企业微信消息的发送</h2>
+<p>这里需要在对应的群创建一个机器人，然后通过这个机器人进行消息的发送<br>
+其中的apk_chanagelog为一个自定义的文件，记录了当前版本更新的内容，这个内容后续会读取到企业微信发送消息中，告知相应的人员修改的内容：<br>
+seng_message.gradle：</p>
+<pre><code class="language-java">import groovy.json.JsonBuilder
+
+def sendMessage={
+    wxPushToken,changeLogPath, appName,versionCode, uploadType, pgyUrl-&gt;
+        //消息组成，Android+项目名称 +环境：url
+        //更新日志
+        if(wxPushToken == null){
+            println(&quot;企业微信推送的token为空&quot;)
+            return
+        }
+        def change_log = &quot;&quot;
+        File file = new File(changeLogPath)
+        def result = new StringBuilder()
+        if (file.exists()) {
+            try {
+                //按行读取changelog的内容进行拼接
+                BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(file), &quot;UTF-8&quot;))
+                def lineContent
+                while ((lineContent = br.readLine()) != null) {
+                    result.append(System.lineSeparator() + lineContent)
+                }
+                br.close()
+                change_log = result.toString()
+            } catch (Exception e) {
+                e.printStackTrace()
+            }
+        }
+        URL url = new URL(&quot;https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${wxPushToken}&quot;);
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+        conn.setReadTimeout(30000);
+        conn.setConnectTimeout(30000);
+        conn.setDoInput(true); // 允许输入流
+        conn.setDoOutput(true); // 允许输出流
+        conn.setUseCaches(false); // 不允许使用缓存
+        conn.setRequestMethod(&quot;POST&quot;); // 请求方式
+        conn.setRequestProperty(&quot;Content-Type&quot;, &quot;application/json;charset=utf-8&quot;);
+        conn.connect();
+        //groovy的语法进行Json相关的操作，这里是构建json字符串
+        def json = new JsonBuilder()
+        json {
+            msgtype &quot;text&quot;
+            text {
+                content &quot;${appName}-Android${versionCode}${uploadType}:\n${pgyUrl}\n${change_log}&quot;
+            }
+        }
+        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(conn.getOutputStream(), &quot;UTF-8&quot;));
+        println(json.toString())
+        writer.write(json.toString());
+        writer.flush();
+        int res = conn.getResponseCode();
+        if (res == 200) {
+            println(&quot;消息发送成功&quot;);
+        } else {
+            println (&quot;消息发送失败&quot;)
+        }
+}
+//创建一个ext的函数方法对象提供给外部使用
+ext{
+    fun = sendMessage
+}
+</code></pre>
+<h2 id="3参数配置">3.参数配置</h2>
+<p>参数的配置，其中使用到的参数包括PGY_TOKEN（蒲公英的上传token），APK_UPLOAD_LOG（版本的区分标示），APP_NAME（应用名称）</p>
+<pre><code class="language-java">buildTypes{
+    release{
+        manifestPlaceholders=[
+            PGY_TOKEN : &quot;${project.PGY_APPID_RELEASE}&quot;,
+            APK_UPLOAD_LOG : &quot;生产&quot;,
+            APP_NAME:&quot;APP&quot;,
+        ]
+    }
+     debug{
+        manifestPlaceholders=[
+            PGY_TOKEN : &quot;${project.PGY_APPID_RELEASE}&quot;,
+            APK_UPLOAD_LOG : &quot;测试&quot;,
+            APP_NAME:&quot;APP&quot;,
+        ]
+    }
+}
+</code></pre>
+<p>在项目的gradle.properties中的配置:</p>
+<pre><code class="language-java">######上传蒲公英的TOKEN
+#蒲公英测试环境的token
+PGY_APPID_TEST=
+#蒲公英正式环境的token
+PGY_APPID_RELEASE=
+
+######微信机器人消息发送
+QYWX_ROBOT_KEY = 
+</code></pre>
+<p>消息拼接格式：<br>
+&quot;<span class="katex"><span class="katex-mathml"><math><semantics><mrow><mrow><mi>a</mi><mi>p</mi><mi>p</mi><mi>N</mi><mi>a</mi><mi>m</mi><mi>e</mi></mrow><mo>−</mo><mi>A</mi><mi>n</mi><mi>d</mi><mi>r</mi><mi>o</mi><mi>i</mi><mi>d</mi></mrow><annotation encoding="application/x-tex">{appName}-Android</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8777699999999999em;vertical-align:-0.19444em;"></span><span class="mord"><span class="mord mathdefault">a</span><span class="mord mathdefault">p</span><span class="mord mathdefault">p</span><span class="mord mathdefault" style="margin-right:0.10903em;">N</span><span class="mord mathdefault">a</span><span class="mord mathdefault">m</span><span class="mord mathdefault">e</span></span><span class="mspace" style="margin-right:0.2222222222222222em;"></span><span class="mbin">−</span><span class="mspace" style="margin-right:0.2222222222222222em;"></span></span><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord mathdefault">A</span><span class="mord mathdefault">n</span><span class="mord mathdefault">d</span><span class="mord mathdefault" style="margin-right:0.02778em;">r</span><span class="mord mathdefault">o</span><span class="mord mathdefault">i</span><span class="mord mathdefault">d</span></span></span></span>{versionCode}<span class='katex-error' title='ParseError: KaTeX parse error: Undefined control sequence: \n at position 14: {uploadType}:\̲n̲'>{uploadType}:\n</span>{pgyUrl}\n${change_log}&quot;<br>
+名称-Android版本类别：<br>
+蒲公英的路径<br>
+更新日志内容</p>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li>
+<ul>
+<li><a href="#1%E4%B8%8A%E4%BC%A0%E8%92%B2%E5%85%AC%E8%8B%B1%E7%9A%84%E6%96%87%E4%BB%B6">1.上传蒲公英的文件</a></li>
+<li><a href="#2%E4%BC%81%E4%B8%9A%E5%BE%AE%E4%BF%A1%E6%B6%88%E6%81%AF%E7%9A%84%E5%8F%91%E9%80%81">2.企业微信消息的发送</a></li>
+<li><a href="#3%E5%8F%82%E6%95%B0%E9%85%8D%E7%BD%AE">3.参数配置</a></li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/zai-ji-ben-yuan-ma-fen-xi-de-ji-chu-shang-jin-xing-hua-dong-chong-tu-de-jie-jue/">
+              <h3 class="post-title">
+                在源码分析的基础上进行滑动冲突的解决
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>

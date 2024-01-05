@@ -1,0 +1,255 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ANR以及电量优化 | Arms-merchants</title>
+<link rel="shortcut icon" href="https://arms-merchants.github.io//favicon.ico?v=1704441990587">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://arms-merchants.github.io//styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="ANR以及电量优化 | Arms-merchants - Atom Feed" href="https://arms-merchants.github.io//atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="App启动优化分析
+1.ANR是什么？
+ANR(Application Not Responding)程序未响应，Android系统中如果在预定的时间内未得到有效的响应或响应时间过长，都会产生ANR，程序的响应性由ActivityManag..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://arms-merchants.github.io/">
+  <img class="avatar" src="https://arms-merchants.github.io//images/avatar.png?v=1704441990587" alt="">
+  </a>
+  <h1 class="site-title">
+    Arms-merchants
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              ANR以及电量优化
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-03-01
+              </span>
+              <span>
+                3 min read
+              </span>
+              
+            </div>
+            
+              <img class="post-feature-image" src="https://images.unsplash.com/photo-1647772842074-0df5b3d91c3a?ixlib=rb-1.2.1&amp;ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&amp;auto=format&amp;fit=crop&amp;w=886&amp;q=80" alt="">
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <h1 id="app启动优化分析"><a href="https://mp.weixin.qq.com/s/_8ZzgmmP4Ov66f42sBHslA">App启动优化分析</a></h1>
+<h2 id="1anr是什么">1.ANR是什么？</h2>
+<p>ANR(Application Not Responding)程序未响应，Android系统中如果在预定的时间内未得到有效的响应或响应时间过长，都会产生ANR，程序的响应性由ActivityManager和WindowManager系统服务监视。</p>
+<h2 id="2anr的产生原因">2.ANR的产生原因？</h2>
+<ul>
+<li>对于前台服务，则超时为SERVICE_TIMEOUT = 20s；</li>
+<li>对于后台服务，则超时为SERVICE_BACKGROUND_TIMEOUT = 200s</li>
+<li>对于前台广播，则超时为BROADCAST_FG_TIMEOUT = 10s；</li>
+<li>对于后台广播，则超时为BROADCAST_BG_TIMEOUT = 60s;</li>
+<li>ContentProvider超时为CONTENT_PROVIDER_PUBLISH_TIMEOUT = 10s;</li>
+<li>InputDispatching Timeout: 输入事件分发超时5s，包括按键和触摸事件。</li>
+</ul>
+<p><code>注意事项: Input的超时机制与其他的不同，对于input来说即便某次事件执行时间超过timeout时长，只要用户后续在没有再生成输入事件，则不会触发ANR</code></p>
+<ul>
+<li>
+<p>Service超时检测机制：</p>
+<ul>
+<li>超过一定时间没有执行完相应操作来触发移除延时消息，则会触发anr;</li>
+</ul>
+</li>
+<li>
+<p>BroadcastReceiver超时检测机制：</p>
+<ul>
+<li>有序广播的总执行时间超过 2* receiver个数 * timeout时长，则会触发anr;<br>
+有序广播的某一个receiver执行过程超过 timeout时长，则会触发anr;</li>
+</ul>
+</li>
+<li>
+<p>另外:</p>
+<ul>
+<li>对于Service, Broadcast, Input发生ANR之后,最终都会调用AMS.appNotResponding;</li>
+<li>对于provider,在其进程启动时publish过程可能会出现ANR, 则会直接杀进程以及清理相应信息,而不会弹出ANR的对话框</li>
+</ul>
+</li>
+</ul>
+<h2 id="3anr的定位分析">3.ANR的定位分析</h2>
+<ol>
+<li>前台ANR发生后，系统会马上去抓取现场的信息，用于调试分析，收集的信息如下:</li>
+</ol>
+<ul>
+<li>将am_anr信息输出到EventLog，也就是说ANR触发的时间点最接近的就是EventLog中输出的am_anr信息</li>
+<li>收集以下重要进程的各个线程调用栈trace信息，保存在data/anr/traces.txt文件
+<ul>
+<li>当前发生ANR的进程，system_server进程以及所有persistent进程</li>
+<li>audioserver, cameraserver, mediaserver, surfaceflinger等重要的native进程</li>
+<li>CPU使用率排名前5的进程</li>
+</ul>
+</li>
+<li>将发生ANR的reason以及CPU使用情况信息输出到main log</li>
+<li>将traces文件和CPU使用情况信息保存到dropbox，即data/system/dropbox目录</li>
+<li>对用户可感知的进程则弹出ANR对话框告知用户，对用户不可感知的进程发生ANR则直接杀掉</li>
+</ul>
+<ol start="2">
+<li>分析步骤
+<ol>
+<li>定位发生ANR时间点</li>
+<li>查看trace信息</li>
+<li>分析是否有耗时的message,binder调用，锁的竞争，CPU资源的抢占</li>
+<li>结合具体的业务场景的上下文来分析</li>
+</ol>
+</li>
+</ol>
+<h2 id="4电量优化工具">4.电量优化工具</h2>
+<pre><code>Profiler - NetWork(网络分析),CPU（CPU使用分析，查看当前CPU运行的状态，判断卡顿发生时的状态）,Memory（内存使用分析，内存抖动，内存泄漏，OOM的分析）
+</code></pre>
+<h2 id="5电量优化方案">5.电量优化方案</h2>
+<p>减少操作，例如数据下载是否每次都需要去更新最新的数据，是否有缓存的必要。<br>
+推迟操作，一些耗电操作是否在特定的状态下（电量满或者充电状态下）进行，例如持续的定位<br>
+合并操作<br>
+DNS的优化：HTTPDNS，可以接入三方提供的dns解析，<a href="https://help.aliyun.com/product/30100.html"><code>阿里云HTTPDNS</code></a><br>
+数据压缩：Ptotobuf</p>
+<h3 id="阿里mavne"><a href="https://developer.aliyun.com/mvn/view"><code>阿里Mavne</code></a></h3>
+
+              </div>
+              <div class="toc-container">
+                <ul class="markdownIt-TOC">
+<li><a href="#app%E5%90%AF%E5%8A%A8%E4%BC%98%E5%8C%96%E5%88%86%E6%9E%90">App启动优化分析</a>
+<ul>
+<li><a href="#1anr%E6%98%AF%E4%BB%80%E4%B9%88">1.ANR是什么？</a></li>
+<li><a href="#2anr%E7%9A%84%E4%BA%A7%E7%94%9F%E5%8E%9F%E5%9B%A0">2.ANR的产生原因？</a></li>
+<li><a href="#3anr%E7%9A%84%E5%AE%9A%E4%BD%8D%E5%88%86%E6%9E%90">3.ANR的定位分析</a></li>
+<li><a href="#4%E7%94%B5%E9%87%8F%E4%BC%98%E5%8C%96%E5%B7%A5%E5%85%B7">4.电量优化工具</a></li>
+<li><a href="#5%E7%94%B5%E9%87%8F%E4%BC%98%E5%8C%96%E6%96%B9%E6%A1%88">5.电量优化方案</a>
+<ul>
+<li><a href="#%E9%98%BF%E9%87%8Cmavne">阿里Mavne</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://arms-merchants.github.io/post/chang-yong-de-shu-ju-jie-gou-fen-xi/">
+              <h3 class="post-title">
+                常用的数据结构分析
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/Arms-merchants" target="_blank">Arms-merchants</a>
+  <a class="rss" href="https://arms-merchants.github.io//atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
